@@ -14,9 +14,14 @@ export const Route = createFileRoute('/')({ component: PairingPage });
 
 type View = 'boot' | 'error' | 'deliver' | 'pair';
 type StatusKind = 'ok' | 'err' | 'info';
+/**
+ * Messages are stored as i18n keys, not pre-computed strings, so they follow
+ * the active language when the user toggles it after the fact.
+ */
 interface StatusMessage {
   kind: StatusKind;
-  message: string;
+  key: string;
+  arg?: string | number;
 }
 
 /** Session values needed to rebuild the bookmarklet on language switch. */
@@ -31,7 +36,12 @@ interface PairSession {
 function PairingPage() {
   const [lang, setLang] = useState<Lang>('en');
   const [view, setView] = useState<View>('boot');
-  const [errorDetail, setErrorDetail] = useState('');
+  const [errorDetail, setErrorDetail] = useState<{
+    key: string;
+    arg?: string | number;
+    missingC?: boolean;
+    missingK?: boolean;
+  } | null>(null);
   const [deliverStatus, setDeliverStatus] = useState<StatusMessage | null>(null);
   const [pairStatus, setPairStatus] = useState<StatusMessage | null>(null);
   const [bookmarkletHref, setBookmarkletHref] = useState('#');
@@ -65,8 +75,7 @@ function PairingPage() {
   }
 
   /** `#d=` fallback receiver: the bookmarklet bounced its envelope here. */
-  async function deliverMode(langNow: Lang, params: URLSearchParams) {
-    const tt = (key: string, arg?: string | number) => translate(langNow, key, arg);
+  async function deliverMode(params: URLSearchParams) {
     setView('deliver');
     const raw = params.get('d');
     const mailbox =
@@ -87,54 +96,51 @@ function PairingPage() {
       typeof record.nonce === 'string' &&
       typeof record.ct === 'string';
     if (!shapeOk) {
-      setDeliverStatus({ kind: 'err', message: tt('payloadMalformed') });
+      setDeliverStatus({ kind: 'err', key: 'payloadMalformed' });
       return;
     }
     if (!mailbox || !/^[0-9a-f]{64}$/i.test(mailbox)) {
-      setDeliverStatus({ kind: 'err', message: tt('mailboxMissing') });
+      setDeliverStatus({ kind: 'err', key: 'mailboxMissing' });
       return;
     }
 
-    setDeliverStatus({ kind: 'info', message: tt('sending') });
+    setDeliverStatus({ kind: 'info', key: 'sending' });
     try {
       const response = await putEnvelope(window.location.origin, mailbox, raw as string);
       if (response.ok) {
-        setDeliverStatus({ kind: 'ok', message: tt('sent') });
+        setDeliverStatus({ kind: 'ok', key: 'sent' });
       } else if (response.status === 409) {
-        setDeliverStatus({ kind: 'ok', message: tt('alreadySent') });
+        setDeliverStatus({ kind: 'ok', key: 'alreadySent' });
       } else if (response.status === 429) {
-        setDeliverStatus({ kind: 'err', message: tt('rateLimited') });
+        setDeliverStatus({ kind: 'err', key: 'rateLimited' });
       } else {
-        setDeliverStatus({ kind: 'err', message: tt('relayHttp', response.status) });
+        setDeliverStatus({ kind: 'err', key: 'relayHttp', arg: response.status });
       }
     } catch (error) {
       setDeliverStatus({
         kind: 'err',
-        message: tt('relayUnreachable', (error as Error)?.message || String(error)),
+        key: 'relayUnreachable',
+        arg: (error as Error)?.message || String(error),
       });
     }
   }
 
   async function pairMode(langNow: Lang, params: URLSearchParams) {
-    const tt = (key: string, arg?: string | number) => translate(langNow, key, arg);
     const code = params.get('c');
     const key = params.get('k');
 
-    const missing: string[] = [];
-    if (!code) missing.push(tt('missingC'));
-    if (!key) missing.push(tt('missingK'));
-    if (missing.length) {
-      setErrorDetail(tt('missing', missing.join(langNow === 'zh' ? ' 和 ' : ' and ')));
+    if (!code || !key) {
+      setErrorDetail({ key: 'missing', missingC: !code, missingK: !key });
       setView('error');
       return;
     }
     if (!/^[a-z2-7]{16}$/.test(code as string)) {
-      setErrorDetail(tt('codeMalformed'));
+      setErrorDetail({ key: 'codeMalformed' });
       setView('error');
       return;
     }
     if (!(await validateCliPublicKey(key as string))) {
-      setErrorDetail(tt('keyMalformed'));
+      setErrorDetail({ key: 'keyMalformed' });
       setView('error');
       return;
     }
@@ -161,14 +167,15 @@ function PairingPage() {
     (async () => {
       const params = new URLSearchParams(window.location.hash.slice(1));
       if (params.get('d')) {
-        await deliverMode(langNow, params);
+        await deliverMode(params);
         return;
       }
       await pairMode(langNow, params);
     })().catch((error) => {
-      setErrorDetail(
-        translate(langNow, 'unexpected', (error as Error)?.message || String(error)),
-      );
+      setErrorDetail({
+        key: 'unexpected',
+        arg: (error as Error)?.message || String(error),
+      });
       setView('error');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -182,7 +189,7 @@ function PairingPage() {
 
   const onBookmarkletClick = (event: React.MouseEvent) => {
     event.preventDefault();
-    setPairStatus({ kind: 'info', message: t('dragFirst') });
+    setPairStatus({ kind: 'info', key: 'dragFirst' });
   };
 
   const onCopyBookmarklet = async () => {
@@ -204,7 +211,7 @@ function PairingPage() {
       }
       area.remove();
     }
-    setCopyLabel(copied ? t('copied') : t('copyFailed'));
+    setCopyLabel(copied ? 'copied' : 'copyFailed');
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
     copyTimerRef.current = setTimeout(() => setCopyLabel(null), 2500);
   };
@@ -219,20 +226,20 @@ function PairingPage() {
     try {
       url = new URL(input.value.trim());
     } catch {
-      setPairStatus({ kind: 'err', message: t('notUrl') });
+      setPairStatus({ kind: 'err', key: 'notUrl' });
       return;
     }
     if (url.origin !== 'https://ontrack.infotech.monash.edu') {
-      setPairStatus({ kind: 'err', message: t('wrongOrigin') });
+      setPairStatus({ kind: 'err', key: 'wrongOrigin' });
       return;
     }
     const authToken = url.searchParams.get('authToken');
     const username = url.searchParams.get('username');
     if (!authToken || !username) {
-      setPairStatus({ kind: 'err', message: t('noParams') });
+      setPairStatus({ kind: 'err', key: 'noParams' });
       return;
     }
-    setPairStatus({ kind: 'info', message: t('encrypting') });
+    setPairStatus({ kind: 'info', key: 'encrypting' });
     try {
       const envelope = await encryptForCli(session.K, { authToken, username });
       const response = await putEnvelope(
@@ -241,18 +248,19 @@ function PairingPage() {
         JSON.stringify(envelope),
       );
       if (response.ok) {
-        setPairStatus({ kind: 'ok', message: t('sent') });
+        setPairStatus({ kind: 'ok', key: 'sent' });
       } else if (response.status === 409) {
-        setPairStatus({ kind: 'ok', message: t('alreadySent') });
+        setPairStatus({ kind: 'ok', key: 'alreadySent' });
       } else if (response.status === 429) {
-        setPairStatus({ kind: 'err', message: t('rateLimited') });
+        setPairStatus({ kind: 'err', key: 'rateLimited' });
       } else {
-        setPairStatus({ kind: 'err', message: t('relayHttpRetry', response.status) });
+        setPairStatus({ kind: 'err', key: 'relayHttpRetry', arg: response.status });
       }
     } catch (error) {
       setPairStatus({
         kind: 'err',
-        message: t('failed', (error as Error)?.message || String(error)),
+        key: 'failed',
+        arg: (error as Error)?.message || String(error),
       });
     }
   };
@@ -279,7 +287,19 @@ function PairingPage() {
       <section id="view-error" hidden={view !== 'error'}>
         <h2>{t('errorTitle')}</h2>
         <p id="error-detail" className="muted">
-          {errorDetail}
+          {errorDetail
+            ? errorDetail.key === 'missing'
+              ? t(
+                  'missing',
+                  [
+                    errorDetail.missingC ? t('missingC') : null,
+                    errorDetail.missingK ? t('missingK') : null,
+                  ]
+                    .filter(Boolean)
+                    .join(lang === 'zh' ? ' 和 ' : ' and '),
+                )
+              : t(errorDetail.key, errorDetail.arg)
+            : null}
         </p>
         <p className="muted">
           {t('errorHint')} <code>ontrack login</code> {t('errorHint2')}
@@ -293,7 +313,7 @@ function PairingPage() {
           className={deliverStatus ? `status ${deliverStatus.kind}` : 'status info'}
           hidden={!deliverStatus}
         >
-          {deliverStatus?.message}
+          {deliverStatus ? t(deliverStatus.key, deliverStatus.arg) : null}
         </p>
       </section>
 
@@ -319,7 +339,7 @@ function PairingPage() {
                 type="button"
                 onClick={onCopyBookmarklet}
               >
-                {copyLabel ?? t('copyBtn')}
+                {copyLabel ? t(copyLabel) : t('copyBtn')}
               </button>
             </p>
             <p className="muted small">{t('step1Hint')}</p>
@@ -368,7 +388,7 @@ function PairingPage() {
           className={pairStatus ? `status ${pairStatus.kind}` : 'status'}
           hidden={!pairStatus}
         >
-          {pairStatus?.message}
+          {pairStatus ? t(pairStatus.key, pairStatus.arg) : null}
         </p>
         <p className="muted small" style={{ marginTop: 18 }}>
           {t('codeLabel')}{' '}
