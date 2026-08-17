@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ontrack-pair-relay",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "@tanstack/react-start/server-entry",
+  "observability": { "enabled": true },
+  "kv_namespaces": [
+    { "binding": "MAILBOXES", "id": "8d943a5c5797449faee8220095f69cfa" }
+  ],
+  "routes": [{ "pattern": "pair.markchu.work", "custom_domain": true }]
+}

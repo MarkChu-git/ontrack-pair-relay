@@ -1,5 +1,10 @@
 node_modules/
 .wrangler/
 dist/
+.output/
 *.tsbuildinfo
 .DS_Store
+
+# Generated artifacts (regenerate with `bun run build` / `bun run cf-typegen`)
+src/routeTree.gen.ts
+worker-configuration.d.ts

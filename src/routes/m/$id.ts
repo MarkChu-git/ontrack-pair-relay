@@ -1,5 +1,5 @@
 /**
- * ontrack-pair-relay — a blind, one-shot mailbox for OnTrack CLI pairing.
+ * Mailbox API — a blind, one-shot mailbox for OnTrack CLI pairing.
  *
  * Protocol contract (see docs/PAIRING_RELAY_LOGIN_PLAN.md in ontrack-cli):
  *   mailboxId = SHA-256(pairing code) hex — the relay never sees the code.
@@ -8,25 +8,13 @@
  * The relay only ever handles ciphertext, and nothing about request bodies
  * is logged anywhere in this handler.
  *
- * Plain fetch handler — no framework, no dependencies.
+ * Ported verbatim from the original plain-Worker implementation
+ * (src/worker.ts) onto a TanStack Start server route.
  */
+import { createFileRoute } from '@tanstack/react-router';
+import { env } from 'cloudflare:workers';
 
-/** Minimal KV typing so the project type-checks without @cloudflare/workers-types. */
-interface KVNamespace {
-  get(key: string): Promise<string | null>;
-  put(
-    key: string,
-    value: string | ArrayBuffer,
-    options?: { expirationTtl?: number },
-  ): Promise<void>;
-  delete(key: string): Promise<void>;
-}
-
-interface Env {
-  MAILBOXES: KVNamespace;
-}
-
-const MAILBOX_PATH = /^\/m\/([0-9a-f]{64})$/i;
+const MAILBOX_ID = /^[0-9a-f]{64}$/i;
 const MAILBOX_TTL_SECONDS = 300; // pairing sessions live 5 minutes end to end
 const MAX_BODY_BYTES = 8 * 1024; // envelopes are ~1KB; 8KB is generous
 const WRITE_RATE_LIMIT = 60; // best-effort: max PUTs per IP per window
@@ -60,12 +48,22 @@ function handleOptions(): Response {
   });
 }
 
+function methodNotAllowed(): Response {
+  return respond(405, '{"error":"method not allowed"}', {
+    allow: 'GET, PUT, OPTIONS',
+  });
+}
+
+function badMailboxId(): Response {
+  return respond(400, '{"error":"mailbox id must be 64 hex characters"}');
+}
+
 /**
  * Best-effort per-IP write throttle backed by a KV counter. KV is eventually
  * consistent, so bursts can slip past; limiter failures fail open rather than
  * blocking a one-shot pairing delivery.
  */
-async function isWriteRateLimited(env: Env, ip: string): Promise<boolean> {
+async function isWriteRateLimited(ip: string): Promise<boolean> {
   try {
     const window = Math.floor(Date.now() / (WRITE_RATE_WINDOW_SECONDS * 1000));
     const key = `rl:${ip}:${window}`;
@@ -82,13 +80,9 @@ async function isWriteRateLimited(env: Env, ip: string): Promise<boolean> {
   }
 }
 
-async function handlePut(
-  request: Request,
-  env: Env,
-  id: string,
-): Promise<Response> {
+async function handlePut(request: Request, id: string): Promise<Response> {
   const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
-  if (await isWriteRateLimited(env, ip)) {
+  if (await isWriteRateLimited(ip)) {
     return respond(429, '{"error":"rate limit exceeded"}');
   }
 
@@ -112,7 +106,7 @@ async function handlePut(
   return respond(200, '{}');
 }
 
-async function handleGet(env: Env, id: string): Promise<Response> {
+async function handleGet(id: string): Promise<Response> {
   const value = await env.MAILBOXES.get(id);
   if (value === null) {
     return respond(404, '{"error":"not found"}');
@@ -123,28 +117,25 @@ async function handleGet(env: Env, id: string): Promise<Response> {
   return respond(200, value);
 }
 
-export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === 'OPTIONS') {
-      return handleOptions();
-    }
-    const { pathname } = new URL(request.url);
-    if (!pathname.startsWith('/m/')) {
-      return respond(404, '{"error":"not found"}');
-    }
-    if (request.method !== 'GET' && request.method !== 'PUT') {
-      return respond(405, '{"error":"method not allowed"}', {
-        allow: 'GET, PUT, OPTIONS',
-      });
-    }
-    const match = MAILBOX_PATH.exec(pathname);
-    if (!match) {
-      return respond(400, '{"error":"mailbox id must be 64 hex characters"}');
-    }
-    const id = match[1].toLowerCase();
-    if (request.method === 'PUT') {
-      return handlePut(request, env, id);
-    }
-    return handleGet(env, id);
+export const Route = createFileRoute('/m/$id')({
+  server: {
+    handlers: {
+      GET: async ({ params }) => {
+        if (!MAILBOX_ID.test(params.id)) {
+          return badMailboxId();
+        }
+        return handleGet(params.id.toLowerCase());
+      },
+      PUT: async ({ request, params }) => {
+        if (!MAILBOX_ID.test(params.id)) {
+          return badMailboxId();
+        }
+        return handlePut(request, params.id.toLowerCase());
+      },
+      OPTIONS: () => handleOptions(),
+      // The original worker rejects every other method before looking at the
+      // path, so the catch-all answers 405 regardless of the id's shape.
+      ANY: () => methodNotAllowed(),
+    },
   },
-};
+});
