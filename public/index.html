@@ -4,140 +4,274 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
 <title>OnTrack CLI pairing</title>
 <link rel="icon" href="data:,">
 <style>
-  :root { color-scheme: light; }
+  /* Design read: utility page for a CLI tool, dark-tech / terminal language.
+     One accent (Klein blue, matching the ontrack-cli terminal theme), one
+     radius scale (12px), motion limited to entry fade + semantic pulse. */
+  :root {
+    color-scheme: dark;
+    --bg: #0a0e15;
+    --panel: rgba(18, 24, 34, 0.78);
+    --line: rgba(148, 170, 205, 0.14);
+    --text: #e8edf5;
+    --muted: #8b97ab;
+    --accent: #4d7cfe;
+    --accent-soft: rgba(77, 124, 254, 0.14);
+    --ok: #3fb96f;
+    --err: #e5645a;
+    --radius: 12px;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: #f4f5f7;
-    color: #1c1e21;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(ellipse 70% 45% at 50% -8%, rgba(77, 124, 254, 0.13), transparent 70%),
+      radial-gradient(circle, rgba(148, 170, 205, 0.055) 1px, transparent 1px),
+      var(--bg);
+    background-size: auto, 26px 26px, auto;
   }
   .card {
-    max-width: 640px;
-    margin: 48px auto;
-    padding: 32px;
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+    position: relative;
+    width: 100%;
+    max-width: 660px;
+    padding: 34px 32px 26px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: 0 24px 70px rgba(3, 6, 12, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
   }
-  h1 { font-size: 24px; margin: 0 0 8px; }
+  .card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 10%; right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.55;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .card { animation: rise 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+  }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .brand { font-family: var(--mono); font-size: 13px; color: var(--muted); letter-spacing: 0.04em; }
+  .lang-toggle {
+    font: 12px/1 var(--mono);
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 7px 10px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .lang-toggle:hover { color: var(--text); border-color: var(--accent); }
+  h1 { font-size: 23px; margin: 14px 0 6px; letter-spacing: -0.01em; }
   h2 { font-size: 19px; margin: 0 0 8px; }
-  h3 { font-size: 16px; margin: 0 0 8px; }
+  h3 { font-size: 15.5px; margin: 0; }
   p { margin: 8px 0; }
-  .lede { color: #4b4f56; margin-top: 0; }
-  .steps { padding-left: 22px; margin: 16px 0; }
-  .steps > li { margin-bottom: 26px; }
+  .lede { color: var(--muted); margin-top: 0; max-width: 56ch; }
+  .steps { list-style: none; padding: 0; margin: 22px 0 8px; counter-reset: step; }
+  .steps > li {
+    position: relative;
+    padding: 0 0 26px 44px;
+    counter-increment: step;
+  }
+  .steps > li::before {
+    content: counter(step, decimal-leading-zero);
+    position: absolute;
+    left: 0; top: 1px;
+    width: 28px; height: 28px;
+    display: grid;
+    place-items: center;
+    font: 12px/1 var(--mono);
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid rgba(77, 124, 254, 0.35);
+    border-radius: var(--radius);
+  }
+  .steps > li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 14px; top: 34px; bottom: 4px;
+    width: 1px;
+    background: var(--line);
+  }
   .btn {
     display: inline-block;
-    background: #0b5fff;
-    color: #fff;
-    padding: 10px 16px;
-    border-radius: 8px;
+    background: var(--accent);
+    color: #f2f6ff;
+    padding: 10px 18px;
+    border-radius: var(--radius);
     text-decoration: none;
     border: 0;
-    font: inherit;
+    font: 600 14.5px/1.2 inherit;
     cursor: pointer;
+    transition: transform 0.12s, background 0.15s, box-shadow 0.15s;
   }
-  .btn:hover { background: #0a53d6; }
-  .btn.ghost { background: #eef1f5; color: #1c1e21; }
-  .btn.ghost:hover { background: #e2e6ec; }
-  .btn.bookmarklet { cursor: grab; }
-  .muted { color: #6a6f76; }
+  .btn:hover { background: #3f6cf0; box-shadow: 0 6px 22px rgba(77, 124, 254, 0.28); }
+  .btn:active { transform: translateY(1px) scale(0.98); }
+  .btn.ghost { background: rgba(148, 170, 205, 0.1); color: var(--text); border: 1px solid var(--line); }
+  .btn.ghost:hover { background: rgba(148, 170, 205, 0.18); box-shadow: none; }
+  .btn.bookmarklet {
+    cursor: grab;
+    font-family: var(--mono);
+    border: 1px dashed rgba(77, 124, 254, 0.65);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .btn.bookmarklet:hover { background: rgba(77, 124, 254, 0.22); box-shadow: none; }
+  .btnrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 10px 0 4px; }
+  .muted { color: var(--muted); }
   .small { font-size: 13px; }
-  code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
-  .status { padding: 12px 14px; border-radius: 8px; margin: 16px 0 0; }
-  .status.ok { background: #e5f6e8; color: #14532d; }
-  .status.err { background: #fdecea; color: #8a1f11; }
-  .status.info { background: #e8f0fe; color: #173f8a; }
-  .alt { border-top: 1px solid #e4e6ea; padding-top: 18px; margin-top: 6px; }
-  form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  code {
+    font-family: var(--mono);
+    background: rgba(148, 170, 205, 0.12);
+    padding: 1px 6px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .status { padding: 12px 14px; border-radius: var(--radius); margin: 16px 0 0; font-size: 14.5px; border: 1px solid transparent; }
+  .status.ok { background: rgba(63, 185, 111, 0.12); color: #7edda4; border-color: rgba(63, 185, 111, 0.3); }
+  .status.err { background: rgba(229, 100, 90, 0.1); color: #f0938c; border-color: rgba(229, 100, 90, 0.3); }
+  .status.info { background: var(--accent-soft); color: #9db9ff; border-color: rgba(77, 124, 254, 0.3); }
+  .alt { border-top: 1px solid var(--line); padding-top: 18px; margin-top: 4px; }
+  form { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
   input {
     flex: 1;
-    min-width: 240px;
+    min-width: 220px;
     padding: 10px 12px;
-    border: 1px solid #cdd2d9;
-    border-radius: 8px;
-    font: inherit;
+    background: rgba(10, 14, 21, 0.7);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font: 13.5px/1.4 var(--mono);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input::placeholder { color: #5b6678; }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(77, 124, 254, 0.18); }
+  .codechip {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+    padding: 8px 14px;
+    font: 600 15px/1 var(--mono);
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid rgba(77, 124, 254, 0.35);
+    border-radius: var(--radius);
+  }
+  .pulse {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .pulse { animation: pulse 1.8s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.25; transform: scale(0.8); } }
   }
   [hidden] { display: none !important; }
-  @media (max-width: 680px) { .card { margin: 16px; padding: 20px; } }
+  @media (max-width: 680px) { .card { padding: 24px 18px 18px; } }
 </style>
 </head>
 <body>
 <main class="card">
-  <h1>OnTrack CLI pairing</h1>
-  <p class="lede">
-    Finish signing in to the OnTrack CLI running on your remote machine.
-    Your password never leaves this browser — only an end-to-end encrypted
-    token travels back through a blind relay.
+  <div class="topbar">
+    <span class="brand">ontrack-cli // pair</span>
+    <button id="lang-toggle" class="lang-toggle" type="button">中文</button>
+  </div>
+
+  <h1 data-i18n="title">OnTrack CLI pairing</h1>
+  <p class="lede" data-i18n="lede">
+    Finish signing in to the OnTrack CLI on your remote machine. Your password
+    never leaves this browser. Only an end-to-end encrypted token travels back
+    through a blind relay.
   </p>
-  <noscript><p class="status err">This page needs JavaScript (WebCrypto) to pair.</p></noscript>
+  <noscript>
+    <p class="status err">This page needs JavaScript (WebCrypto) to pair.<br>本页面需要启用 JavaScript（WebCrypto）才能完成配对。</p>
+  </noscript>
 
   <section id="view-error" hidden>
-    <h2>This pairing link is incomplete</h2>
+    <h2 data-i18n="errorTitle">This pairing link is incomplete</h2>
     <p id="error-detail" class="muted"></p>
-    <p class="muted">Run <code>ontrack login</code> again to get a fresh link.</p>
+    <p class="muted"><span data-i18n="errorHint">Run</span> <code>ontrack login</code> <span data-i18n="errorHint2">again to get a fresh link.</span></p>
   </section>
 
   <section id="view-deliver" hidden>
-    <h2>Sending your login</h2>
+    <h2 data-i18n="deliverTitle">Sending your login</h2>
     <p id="deliver-status" class="status info" hidden></p>
   </section>
 
   <section id="view-pair" hidden>
     <ol class="steps">
       <li>
-        <h3>Add the pairing bookmark <span class="muted">(first time only)</span></h3>
-        <p>Drag this button into your bookmarks bar:</p>
-        <p>
-          <a id="bookmarklet" class="btn bookmarklet" href="#">Send to OnTrack CLI</a>
-          <button id="copy-bookmarklet" class="btn ghost" type="button">Copy bookmarklet</button>
+        <h3><span data-i18n="step1Title">Add the pairing bookmark</span> <span class="muted small" data-i18n="step1Note">(first time only)</span></h3>
+        <p class="muted small" data-i18n="step1Drag">Drag this button into your bookmarks bar:</p>
+        <p class="btnrow">
+          <a id="bookmarklet" class="btn bookmarklet" href="#" data-i18n="bookmarkletLabel">Send to OnTrack CLI</a>
+          <button id="copy-bookmarklet" class="btn ghost" type="button" data-i18n="copyBtn">Copy bookmarklet</button>
         </p>
-        <p class="muted small">
+        <p class="muted small" data-i18n="step1Hint">
           No bookmarks bar? Create a bookmark manually and paste the copied text
-          as its URL. The bookmark only ever contains your CLI's public key —
-          it is safe to keep for future logins, but each link is single-use, so
-          re-drag it next time you pair.
+          as its URL. The bookmark only ever contains your CLI's public key, so
+          it is safe to keep, but each pairing link is single-use: re-drag it
+          next time you pair.
         </p>
       </li>
       <li>
-        <h3>Sign in to OnTrack</h3>
-        <p>
-          <a class="btn" href="https://ontrack.infotech.monash.edu" target="_blank" rel="noopener">Open OnTrack sign-in &#8599;</a>
+        <h3 data-i18n="step2Title">Sign in to OnTrack</h3>
+        <p class="btnrow">
+          <a class="btn" href="https://ontrack.infotech.monash.edu" target="_blank" rel="noopener" data-i18n="step2Btn">Open OnTrack sign-in &#8599;</a>
         </p>
-        <p class="muted">Complete your normal Monash SSO in the new tab. Your password and MFA never touch this page.</p>
+        <p class="muted small" data-i18n="step2Hint">Complete your normal Monash SSO in the new tab. Your password and MFA never touch this page.</p>
       </li>
       <li>
-        <h3>Click the bookmark while on the OnTrack page</h3>
-        <p>
-          Once sign-in lands you in OnTrack, click <strong>Send to OnTrack CLI</strong>
-          in your bookmarks bar. It reads your session token, encrypts it to your
-          CLI, and drops it in the relay.
+        <h3 data-i18n="step3Title">Click the bookmark while on the OnTrack page</h3>
+        <p class="muted small" data-i18n="step3Body">
+          Once sign-in lands you in OnTrack, click the bookmark in your
+          bookmarks bar. It reads your session token, encrypts it to your CLI,
+          and drops it in the relay.
         </p>
       </li>
     </ol>
 
     <div class="alt">
-      <h3>On a phone, or the bookmark did not work?</h3>
-      <p class="muted">
+      <h3 data-i18n="altTitle">On a phone, or the bookmark did not work?</h3>
+      <p class="muted small" data-i18n="altHint">
         Right after sign-in lands, copy the full URL from the address bar
-        (it contains <code>authToken</code>) and paste it here:
+        (it contains authToken) and paste it here:
       </p>
       <form id="paste-form">
         <input id="paste-input" type="url" required autocomplete="off" spellcheck="false"
                placeholder="https://ontrack.infotech.monash.edu/sign_in?authToken=&hellip;">
-        <button class="btn" type="submit">Encrypt &amp; send</button>
+        <button class="btn" type="submit" data-i18n="pasteBtn">Encrypt &amp; send</button>
       </form>
     </div>
 
     <p id="pair-status" class="status" hidden></p>
-    <p class="muted small">
-      Pairing code <code id="code-display"></code> &middot; valid for about 5 minutes
-      after your CLI printed the link. The relay only ever stores the encrypted
-      envelope and deletes it on first read.
+    <p class="muted small" style="margin-top: 18px;">
+      <span data-i18n="codeLabel">Pairing code</span>
+      <span class="codechip"><span class="pulse"></span><span id="code-display"></span></span>
+    </p>
+    <p class="muted small" data-i18n="codeNote">
+      Valid for about 5 minutes after your CLI printed the link. The relay only
+      ever stores the encrypted envelope and deletes it on first read.
     </p>
   </section>
 </main>
@@ -146,7 +280,8 @@
   Readable reference for the generated bookmarklet. The page builds the compact
   version from BOOKMARKLET_LINES below, embedding this session's CLI public key
   (K, base64url SPKI), relay origin (R), mailbox id (M = SHA-256 hex of the
-  pairing code) and this page's URL (P, for the CSP fallback):
+  pairing code), this page's URL (P, for the CSP fallback) and the two alert
+  strings baked in the page's current language:
 
     (async () => {
       // 1. Grab credentials: sign_in landing URL query first, then OnTrack localStorage.
@@ -165,7 +300,7 @@
           username = o.username || o.user_name || o.login || o.email || o.student_email || "";
         }
       }
-      if (!authToken || !username) { alert("sign in first"); return; }
+      if (!authToken || !username) { alert(<no-session message>); return; }
 
       // 2. ECIES to the CLI's public key (must match encryptForCli in
       //    ontrack-cli src/lib/pair-login.ts):
@@ -183,6 +318,127 @@
 -->
 <script>
 "use strict";
+
+// ---- i18n ----
+
+const I18N = {
+  en: {
+    title: "OnTrack CLI pairing",
+    lede: "Finish signing in to the OnTrack CLI on your remote machine. Your password never leaves this browser. Only an end-to-end encrypted token travels back through a blind relay.",
+    errorTitle: "This pairing link is incomplete",
+    errorHint: "Run",
+    errorHint2: "again to get a fresh link.",
+    deliverTitle: "Sending your login",
+    step1Title: "Add the pairing bookmark",
+    step1Note: "(first time only)",
+    step1Drag: "Drag this button into your bookmarks bar:",
+    bookmarkletLabel: "Send to OnTrack CLI",
+    copyBtn: "Copy bookmarklet",
+    step1Hint: "No bookmarks bar? Create a bookmark manually and paste the copied text as its URL. The bookmark only ever contains your CLI's public key, so it is safe to keep, but each pairing link is single-use: re-drag it next time you pair.",
+    step2Title: "Sign in to OnTrack",
+    step2Btn: "Open OnTrack sign-in ↗",
+    step2Hint: "Complete your normal Monash SSO in the new tab. Your password and MFA never touch this page.",
+    step3Title: "Click the bookmark while on the OnTrack page",
+    step3Body: "Once sign-in lands you in OnTrack, click the bookmark in your bookmarks bar. It reads your session token, encrypts it to your CLI, and drops it in the relay.",
+    altTitle: "On a phone, or the bookmark did not work?",
+    altHint: "Right after sign-in lands, copy the full URL from the address bar (it contains authToken) and paste it here:",
+    pasteBtn: "Encrypt & send",
+    codeLabel: "Pairing code",
+    codeNote: "Valid for about 5 minutes after your CLI printed the link. The relay only ever stores the encrypted envelope and deletes it on first read.",
+    missing: (parts) => "Missing " + parts + " in the link fragment.",
+    missingC: "c (the pairing code)",
+    missingK: "k (the CLI public key)",
+    codeMalformed: "The pairing code in the link is malformed.",
+    keyMalformed: "The CLI public key embedded in the link is malformed.",
+    payloadMalformed: "The payload in this link is malformed. Go back to the OnTrack tab and click the bookmark again.",
+    mailboxMissing: "This link is missing its mailbox id. Open the full pairing link from your CLI and try again.",
+    sending: "Sending your encrypted credential to the CLI…",
+    sent: "Sent. You can close this page. Your CLI will finish signing in automatically.",
+    alreadySent: "Already delivered. You can close this page.",
+    rateLimited: "The relay is rate-limiting right now. Wait a minute, then go back and click the bookmark again.",
+    relayHttp: (s) => "The relay answered with HTTP " + s + ". Go back to the OnTrack tab and click the bookmark again.",
+    relayHttpRetry: (s) => "The relay answered with HTTP " + s + ". Try again.",
+    relayUnreachable: (m) => "Could not reach the relay (" + m + "). Check your connection and try again.",
+    notUrl: "That is not a valid URL.",
+    wrongOrigin: "The URL must be on https://ontrack.infotech.monash.edu.",
+    noParams: "That URL has no authToken/username parameters. Copy the full address right after sign-in lands.",
+    encrypting: "Encrypting and sending…",
+    failed: (m) => "Failed: " + m,
+    dragFirst: "Drag this button into your bookmarks bar first. Then, after signing in, click it while you are on the OnTrack page.",
+    copied: "Copied!",
+    copyFailed: "Copy failed. Drag the button instead.",
+    bmNoSession: "No OnTrack session found. Sign in, then click this bookmark again.",
+    bmSent: "Sent to your CLI. You can close this tab.",
+    bmFailed: (m) => "Pairing failed: " + m,
+    unexpected: (m) => "Unexpected error: " + m,
+  },
+  zh: {
+    title: "OnTrack CLI 配对",
+    lede: "完成远程机器上 OnTrack CLI 的登录。密码不会离开这个浏览器，只有一个端到端加密的令牌经由盲中继传回。",
+    errorTitle: "配对链接不完整",
+    errorHint: "重新运行",
+    errorHint2: "获取新链接。",
+    deliverTitle: "正在发送登录信息",
+    step1Title: "添加配对书签",
+    step1Note: "（仅首次）",
+    step1Drag: "把这个按钮拖进书签栏：",
+    bookmarkletLabel: "发送到 OnTrack CLI",
+    copyBtn: "复制 bookmarklet",
+    step1Hint: "没有书签栏？手动新建一个书签，把复制的文本粘进 URL。书签里只含有你 CLI 的公钥，保存它是安全的；但每次配对链接都是一次性的，下次配对请重新拖拽。",
+    step2Title: "登录 OnTrack",
+    step2Btn: "打开 OnTrack 登录页 ↗",
+    step2Hint: "在新标签页完成正常的 Monash SSO。密码和 MFA 不会接触本页面。",
+    step3Title: "在 OnTrack 页面上点击书签",
+    step3Body: "登录落地进入 OnTrack 后，点击书签栏里的配对书签。它会读取你的会话令牌、加密给你的 CLI、投进中继。",
+    altTitle: "在手机上，或书签没生效？",
+    altHint: "登录落地后立即复制地址栏的完整 URL（包含 authToken），粘贴到这里：",
+    pasteBtn: "加密并发送",
+    codeLabel: "配对码",
+    codeNote: "CLI 打印链接后约 5 分钟内有效。中继只保存加密信封，首次读取即删除。",
+    missing: (parts) => "链接片段中缺少 " + parts + "。",
+    missingC: "c（配对码）",
+    missingK: "k（CLI 公钥）",
+    codeMalformed: "链接中的配对码格式不正确。",
+    keyMalformed: "链接中内嵌的 CLI 公钥格式不正确。",
+    payloadMalformed: "链接中的载荷格式不正确。回到 OnTrack 标签页重新点击书签。",
+    mailboxMissing: "链接缺少信箱 id。请打开 CLI 打印的完整配对链接重试。",
+    sending: "正在把加密凭证发送给你的 CLI…",
+    sent: "已发送。你可以关闭本页面，CLI 会自动完成登录。",
+    alreadySent: "已投递过。你可以关闭本页面。",
+    rateLimited: "中继正在限流。等一分钟后回到 OnTrack 标签页重新点击书签。",
+    relayHttp: (s) => "中继返回了 HTTP " + s + "。回到 OnTrack 标签页重新点击书签。",
+    relayHttpRetry: (s) => "中继返回了 HTTP " + s + "。请重试。",
+    relayUnreachable: (m) => "无法连接中继（" + m + "）。检查网络后重试。",
+    notUrl: "这不是一个有效的 URL。",
+    wrongOrigin: "URL 必须属于 https://ontrack.infotech.monash.edu。",
+    noParams: "该 URL 没有 authToken/username 参数。请在登录落地后立即复制完整地址。",
+    encrypting: "正在加密并发送…",
+    failed: (m) => "失败：" + m,
+    dragFirst: "请先把这个按钮拖进书签栏，登录完成后，在 OnTrack 页面上点击它。",
+    copied: "已复制！",
+    copyFailed: "复制失败，请直接拖拽按钮。",
+    bmNoSession: "没有找到 OnTrack 会话。请先登录，然后再点一次这个书签。",
+    bmSent: "已发送给你的 CLI。你可以关闭这个标签页。",
+    bmFailed: (m) => "配对失败：" + m,
+    unexpected: (m) => "意外错误：" + m,
+  },
+};
+
+let lang = (navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en";
+
+function t(key, arg) {
+  const value = I18N[lang][key] ?? I18N.en[key];
+  return typeof value === "function" ? value(arg) : value;
+}
+
+function applyI18n() {
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  document.title = t("title");
+  for (const el of document.querySelectorAll("[data-i18n]")) {
+    el.textContent = t(el.dataset.i18n);
+  }
+  $("lang-toggle").textContent = lang === "zh" ? "EN" : "中文";
+}
 
 // ---- pure helpers (no DOM; keep in sync with ontrack-cli src/lib/pair-login.ts) ----
 
@@ -260,7 +516,9 @@ async function putEnvelope(mailboxId, body) {
 }
 
 // Compact bookmarklet source. __K__/__R__/__M__/__P__ are replaced with
-// JSON-quoted session values. See the HTML comment above for a readable version.
+// JSON-quoted session values, __MSG_NOSESSION__/__MSG_SENT__ with the alert
+// strings baked in the page's current language. See the HTML comment above
+// for a readable version.
 const BOOKMARKLET_LINES = [
 'javascript:(async()=>{',
 'const K=__K__,R=__R__,M=__M__,P=__P__,S=crypto.subtle,T=new TextEncoder(),J=JSON.stringify,L=localStorage,G={name:"ECDH",namedCurve:"P-256"};',
@@ -273,7 +531,7 @@ const BOOKMARKLET_LINES = [
 'const w=L.getItem("doubtfire_user");',
 'if(w&&!u){const o=JSON.parse(w);u=o.username||o.user_name||o.login||o.email||o.student_email}',
 '}catch(e){}',
-'if(!t||!u){alert("No OnTrack session found - sign in, then click this bookmark again.");return}',
+'if(!t||!u){alert(__MSG_NOSESSION__);return}',
 // K is base64url of a P-256 SPKI (91 bytes), so it always needs exactly "==" padding.
 'const C=await S.importKey("spki",Uint8Array.from(atob(K.split("-").join("+").split("_").join("/")+"=="),c=>c.charCodeAt(0)),G,!1,[]);',
 'const E=await S.generateKey(G,!1,["deriveBits"]);',
@@ -283,9 +541,9 @@ const BOOKMARKLET_LINES = [
 // No content-type header: keeps the PUT a CORS "simple request" (no preflight).
 'try{const r=await fetch(R+"/m/"+M,{method:"PUT",body:D});',
 'if(!r.ok&&r.status!=409)throw 0;',
-'alert("Sent to your CLI. You can close this tab.")}catch(e){',
+'alert(__MSG_SENT__)}catch(e){',
 'location.href=P+"#d="+encodeURIComponent(D)+"&m="+M}',
-'})().catch(e=>alert("Pairing failed: "+(e&&e.message||e)))'
+'})().catch(e=>alert(__MSG_FAILED_PREFIX__+(e&&e.message||e)))'
 ];
 
 function buildBookmarklet({ K, R, M, P }) {
@@ -293,7 +551,10 @@ function buildBookmarklet({ K, R, M, P }) {
     .replaceAll("__K__", JSON.stringify(K))
     .replaceAll("__R__", JSON.stringify(R))
     .replaceAll("__M__", JSON.stringify(M))
-    .replaceAll("__P__", JSON.stringify(P));
+    .replaceAll("__P__", JSON.stringify(P))
+    .replaceAll("__MSG_NOSESSION__", JSON.stringify(t("bmNoSession")))
+    .replaceAll("__MSG_SENT__", JSON.stringify(t("bmSent")))
+    .replaceAll("__MSG_FAILED_PREFIX__", JSON.stringify(t("bmFailed", "")));
 }
 
 // ---- DOM bootstrap ----
@@ -318,6 +579,16 @@ function showError(detail) {
   showView("view-error");
 }
 
+/** Session values needed to rebuild the bookmarklet on language switch. */
+let pairSession = null;
+
+function rebuildBookmarklet() {
+  if (!pairSession) return;
+  const source = buildBookmarklet(pairSession);
+  $("bookmarklet").href = source;
+  pairSession.source = source;
+}
+
 /** `#d=` fallback receiver: the bookmarklet bounced its envelope here. */
 async function deliverMode(params) {
   showView("view-deliver");
@@ -338,28 +609,28 @@ async function deliverMode(params) {
     typeof envelope.nonce === "string" &&
     typeof envelope.ct === "string";
   if (!shapeOk) {
-    setStatus("deliver-status", "The payload in this link is malformed. Go back to the OnTrack tab and click the bookmark again.", "err");
+    setStatus("deliver-status", t("payloadMalformed"), "err");
     return;
   }
   if (!mailbox || !/^[0-9a-f]{64}$/i.test(mailbox)) {
-    setStatus("deliver-status", "This link is missing its mailbox id. Open the full pairing link from your CLI and try again.", "err");
+    setStatus("deliver-status", t("mailboxMissing"), "err");
     return;
   }
 
-  setStatus("deliver-status", "Sending your encrypted credential to the CLI\u2026", "info");
+  setStatus("deliver-status", t("sending"), "info");
   try {
     const response = await putEnvelope(mailbox, raw);
     if (response.ok) {
-      setStatus("deliver-status", "Sent \u2014 you can close this page. Your CLI will finish signing in automatically.", "ok");
+      setStatus("deliver-status", t("sent"), "ok");
     } else if (response.status === 409) {
-      setStatus("deliver-status", "Already delivered \u2014 you can close this page.", "ok");
+      setStatus("deliver-status", t("alreadySent"), "ok");
     } else if (response.status === 429) {
-      setStatus("deliver-status", "The relay is rate-limiting right now. Wait a minute, then go back and click the bookmark again.", "err");
+      setStatus("deliver-status", t("rateLimited"), "err");
     } else {
-      setStatus("deliver-status", "The relay answered with HTTP " + response.status + ". Go back to the OnTrack tab and click the bookmark again.", "err");
+      setStatus("deliver-status", t("relayHttp", response.status), "err");
     }
   } catch (error) {
-    setStatus("deliver-status", "Could not reach the relay (" + (error && error.message || error) + "). Check your connection and try again.", "err");
+    setStatus("deliver-status", t("relayUnreachable", (error && error.message) || error), "err");
   }
 }
 
@@ -368,45 +639,44 @@ async function pairMode(params) {
   const key = params.get("k");
 
   const missing = [];
-  if (!code) missing.push("c (the pairing code)");
-  if (!key) missing.push("k (the CLI public key)");
+  if (!code) missing.push(t("missingC"));
+  if (!key) missing.push(t("missingK"));
   if (missing.length) {
-    showError("Missing " + missing.join(" and ") + " in the link fragment.");
+    showError(t("missing", missing.join(lang === "zh" ? " 和 " : " and ")));
     return;
   }
   if (!/^[a-z2-7]{16}$/.test(code)) {
-    showError("The pairing code in the link is malformed.");
+    showError(t("codeMalformed"));
     return;
   }
   try {
     await subtle.importKey("spki", b64urlDecode(key), { name: "ECDH", namedCurve: "P-256" }, false, []);
   } catch {
-    showError("The CLI public key embedded in the link is malformed.");
+    showError(t("keyMalformed"));
     return;
   }
 
   const mailbox = await deriveMailboxId(code);
-  const pageUrl = location.origin + location.pathname;
-  const source = buildBookmarklet({ K: key, R: location.origin, M: mailbox, P: pageUrl });
+  pairSession = { K: key, R: location.origin, M: mailbox, P: location.origin + location.pathname };
+  rebuildBookmarklet();
 
-  $("bookmarklet").href = source;
   $("code-display").textContent = code.replace(/(.{4})(?=.)/g, "$1-");
   showView("view-pair");
 
   $("bookmarklet").addEventListener("click", (event) => {
     event.preventDefault();
-    setStatus("pair-status", "Drag this button into your bookmarks bar first \u2014 then, after signing in, click it while you are on the OnTrack page.", "info");
+    setStatus("pair-status", t("dragFirst"), "info");
   });
 
   $("copy-bookmarklet").addEventListener("click", async () => {
     const button = $("copy-bookmarklet");
     let copied = false;
     try {
-      await navigator.clipboard.writeText(source);
+      await navigator.clipboard.writeText(pairSession.source);
       copied = true;
     } catch {
       const area = document.createElement("textarea");
-      area.value = source;
+      area.value = pairSession.source;
       document.body.appendChild(area);
       area.select();
       try {
@@ -416,8 +686,8 @@ async function pairMode(params) {
       }
       area.remove();
     }
-    button.textContent = copied ? "Copied!" : "Copy failed \u2014 drag instead";
-    setTimeout(() => { button.textContent = "Copy bookmarklet"; }, 2500);
+    button.textContent = copied ? t("copied") : t("copyFailed");
+    setTimeout(() => { button.textContent = t("copyBtn"); }, 2500);
   });
 
   // Mobile / no-bookmarklet fallback: paste the sign_in landing URL.
@@ -427,37 +697,45 @@ async function pairMode(params) {
     try {
       url = new URL($("paste-input").value.trim());
     } catch {
-      setStatus("pair-status", "That is not a valid URL.", "err");
+      setStatus("pair-status", t("notUrl"), "err");
       return;
     }
     if (url.origin !== "https://ontrack.infotech.monash.edu") {
-      setStatus("pair-status", "The URL must be on https://ontrack.infotech.monash.edu.", "err");
+      setStatus("pair-status", t("wrongOrigin"), "err");
       return;
     }
     const authToken = url.searchParams.get("authToken");
     const username = url.searchParams.get("username");
     if (!authToken || !username) {
-      setStatus("pair-status", "That URL has no authToken/username parameters. Copy the full address right after sign-in lands.", "err");
+      setStatus("pair-status", t("noParams"), "err");
       return;
     }
-    setStatus("pair-status", "Encrypting and sending\u2026", "info");
+    setStatus("pair-status", t("encrypting"), "info");
     try {
       const envelope = await encryptForCli(key, { authToken, username });
       const response = await putEnvelope(mailbox, JSON.stringify(envelope));
       if (response.ok) {
-        setStatus("pair-status", "Sent \u2014 you can close this page. Your CLI will finish signing in automatically.", "ok");
+        setStatus("pair-status", t("sent"), "ok");
       } else if (response.status === 409) {
-        setStatus("pair-status", "Already delivered \u2014 you can close this page.", "ok");
+        setStatus("pair-status", t("alreadySent"), "ok");
       } else if (response.status === 429) {
-        setStatus("pair-status", "The relay is rate-limiting right now. Wait a minute and try again.", "err");
+        setStatus("pair-status", t("rateLimited"), "err");
       } else {
-        setStatus("pair-status", "The relay answered with HTTP " + response.status + ". Try again.", "err");
+        setStatus("pair-status", t("relayHttpRetry", response.status), "err");
       }
     } catch (error) {
-      setStatus("pair-status", "Failed: " + (error && error.message || error), "err");
+      setStatus("pair-status", t("failed", (error && error.message) || error), "err");
     }
   });
 }
+
+$("lang-toggle").addEventListener("click", () => {
+  lang = lang === "zh" ? "en" : "zh";
+  applyI18n();
+  rebuildBookmarklet();
+});
+
+applyI18n();
 
 (async () => {
   const params = new URLSearchParams(location.hash.slice(1));
@@ -467,7 +745,7 @@ async function pairMode(params) {
   }
   await pairMode(params);
 })().catch((error) => {
-  showError("Unexpected error: " + (error && error.message || error));
+  showError(t("unexpected", (error && error.message) || error));
 });
 </script>
 </body>
