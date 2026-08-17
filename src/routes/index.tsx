@@ -365,7 +365,9 @@ function PairingPage() {
         </ol>
 
         <div className="alt">
-          <h3>{t('altTitle')}</h3>
+          <h3>{t('mobileTitle')}</h3>
+          <p className="muted small">{t('mobileBody')}</p>
+          <h3 style={{ marginTop: 16 }}>{t('altTitle')}</h3>
           <p className="muted small">{t('altHint')}</p>
           <form id="paste-form" onSubmit={onPasteSubmit}>
             <input

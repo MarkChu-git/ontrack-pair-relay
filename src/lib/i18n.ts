@@ -31,8 +31,11 @@ export const I18N: Record<Lang, Record<string, DictEntry>> = {
     step3Body:
       'Once sign-in lands you in OnTrack, click the bookmark in your bookmarks bar. It reads your session token, encrypts it to your CLI, and drops it in the relay.',
     altTitle: 'On a phone, or the bookmark did not work?',
+    mobileTitle: 'On a phone? Install the bookmark in under a minute',
+    mobileBody:
+      'iOS: tap Share, then Add Bookmark, then edit it and replace its URL with the copied bookmarklet text. Android Chrome: bookmark this page, then edit its URL the same way. Afterwards open the OnTrack tab and tap the bookmark; it reads your session directly, no URL copying needed.',
     altHint:
-      'Right after sign-in lands, copy the full URL from the address bar (it contains authToken) and paste it here:',
+      'Last resort: the sign_in?authToken=... URL flashes by too fast to copy from the address bar, but it stays in your browser history. Find that entry, copy its URL, and paste it here:',
     pasteBtn: 'Encrypt & send',
     codeLabel: 'Pairing code',
     codeNote:
@@ -92,7 +95,11 @@ export const I18N: Record<Lang, Record<string, DictEntry>> = {
     step3Body:
       '登录落地进入 OnTrack 后，点击书签栏里的配对书签。它会读取你的会话令牌、加密给你的 CLI、投进中继。',
     altTitle: '在手机上，或书签没生效？',
-    altHint: '登录落地后立即复制地址栏的完整 URL（包含 authToken），粘贴到这里：',
+    mobileTitle: '在手机上？一分钟内装好配对书签',
+    mobileBody:
+      'iOS：点「分享」→「添加书签」，然后编辑该书签，把 URL 换成复制的 bookmarklet 文本。Android Chrome：收藏本页后同样编辑 URL。之后打开 OnTrack 标签页点一下这个书签，它直接读取会话，完全不用复制 URL。',
+    altHint:
+      '最后手段：登录落地时 sign_in?authToken=... 的 URL 在地址栏一闪而过根本来不及复制，但它会留在浏览器历史记录里。找到那条记录，复制 URL 粘贴到这里：',
     pasteBtn: '加密并发送',
     codeLabel: '配对码',
     codeNote: 'CLI 打印链接后约 5 分钟内有效。中继只保存加密信封，首次读取即删除。',
