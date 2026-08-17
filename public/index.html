@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>OnTrack CLI pairing</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f4f5f7;
+    color: #1c1e21;
+  }
+  .card {
+    max-width: 640px;
+    margin: 48px auto;
+    padding: 32px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+  }
+  h1 { font-size: 24px; margin: 0 0 8px; }
+  h2 { font-size: 19px; margin: 0 0 8px; }
+  h3 { font-size: 16px; margin: 0 0 8px; }
+  p { margin: 8px 0; }
+  .lede { color: #4b4f56; margin-top: 0; }
+  .steps { padding-left: 22px; margin: 16px 0; }
+  .steps > li { margin-bottom: 26px; }
+  .btn {
+    display: inline-block;
+    background: #0b5fff;
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 8px;
+    text-decoration: none;
+    border: 0;
+    font: inherit;
+    cursor: pointer;
+  }
+  .btn:hover { background: #0a53d6; }
+  .btn.ghost { background: #eef1f5; color: #1c1e21; }
+  .btn.ghost:hover { background: #e2e6ec; }
+  .btn.bookmarklet { cursor: grab; }
+  .muted { color: #6a6f76; }
+  .small { font-size: 13px; }
+  code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .status { padding: 12px 14px; border-radius: 8px; margin: 16px 0 0; }
+  .status.ok { background: #e5f6e8; color: #14532d; }
+  .status.err { background: #fdecea; color: #8a1f11; }
+  .status.info { background: #e8f0fe; color: #173f8a; }
+  .alt { border-top: 1px solid #e4e6ea; padding-top: 18px; margin-top: 6px; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  input {
+    flex: 1;
+    min-width: 240px;
+    padding: 10px 12px;
+    border: 1px solid #cdd2d9;
+    border-radius: 8px;
+    font: inherit;
+  }
+  [hidden] { display: none !important; }
+  @media (max-width: 680px) { .card { margin: 16px; padding: 20px; } }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>OnTrack CLI pairing</h1>
+  <p class="lede">
+    Finish signing in to the OnTrack CLI running on your remote machine.
+    Your password never leaves this browser — only an end-to-end encrypted
+    token travels back through a blind relay.
+  </p>
+  <noscript><p class="status err">This page needs JavaScript (WebCrypto) to pair.</p></noscript>
+
+  <section id="view-error" hidden>
+    <h2>This pairing link is incomplete</h2>
+    <p id="error-detail" class="muted"></p>
+    <p class="muted">Run <code>ontrack login</code> again to get a fresh link.</p>
+  </section>
+
+  <section id="view-deliver" hidden>
+    <h2>Sending your login</h2>
+    <p id="deliver-status" class="status info" hidden></p>
+  </section>
+
+  <section id="view-pair" hidden>
+    <ol class="steps">
+      <li>
+        <h3>Add the pairing bookmark <span class="muted">(first time only)</span></h3>
+        <p>Drag this button into your bookmarks bar:</p>
+        <p>
+          <a id="bookmarklet" class="btn bookmarklet" href="#">Send to OnTrack CLI</a>
+          <button id="copy-bookmarklet" class="btn ghost" type="button">Copy bookmarklet</button>
+        </p>
+        <p class="muted small">
+          No bookmarks bar? Create a bookmark manually and paste the copied text
+          as its URL. The bookmark only ever contains your CLI's public key —
+          it is safe to keep for future logins, but each link is single-use, so
+          re-drag it next time you pair.
+        </p>
+      </li>
+      <li>
+        <h3>Sign in to OnTrack</h3>
+        <p>
+          <a class="btn" href="https://ontrack.infotech.monash.edu" target="_blank" rel="noopener">Open OnTrack sign-in &#8599;</a>
+        </p>
+        <p class="muted">Complete your normal Monash SSO in the new tab. Your password and MFA never touch this page.</p>
+      </li>
+      <li>
+        <h3>Click the bookmark while on the OnTrack page</h3>
+        <p>
+          Once sign-in lands you in OnTrack, click <strong>Send to OnTrack CLI</strong>
+          in your bookmarks bar. It reads your session token, encrypts it to your
+          CLI, and drops it in the relay.
+        </p>
+      </li>
+    </ol>
+
+    <div class="alt">
+      <h3>On a phone, or the bookmark did not work?</h3>
+      <p class="muted">
+        Right after sign-in lands, copy the full URL from the address bar
+        (it contains <code>authToken</code>) and paste it here:
+      </p>
+      <form id="paste-form">
+        <input id="paste-input" type="url" required autocomplete="off" spellcheck="false"
+               placeholder="https://ontrack.infotech.monash.edu/sign_in?authToken=&hellip;">
+        <button class="btn" type="submit">Encrypt &amp; send</button>
+      </form>
+    </div>
+
+    <p id="pair-status" class="status" hidden></p>
+    <p class="muted small">
+      Pairing code <code id="code-display"></code> &middot; valid for about 5 minutes
+      after your CLI printed the link. The relay only ever stores the encrypted
+      envelope and deletes it on first read.
+    </p>
+  </section>
+</main>
+
+<!--
+  Readable reference for the generated bookmarklet. The page builds the compact
+  version from BOOKMARKLET_LINES below, embedding this session's CLI public key
+  (K, base64url SPKI), relay origin (R), mailbox id (M = SHA-256 hex of the
+  pairing code) and this page's URL (P, for the CSP fallback):
+
+    (async () => {
+      // 1. Grab credentials: sign_in landing URL query first, then OnTrack localStorage.
+      const q = new URLSearchParams(location.search);
+      let authToken = q.get("authToken") || "";
+      let username = q.get("username") || "";
+      if (!authToken || !username) {
+        let raw = localStorage.getItem("doubtfire_credentials_token"); // may be a JSON string
+        if (raw && !authToken) {
+          try { const p = JSON.parse(raw); if (typeof p === "string") raw = p; } catch {}
+          authToken = raw;
+        }
+        const user = localStorage.getItem("doubtfire_user"); // JSON object
+        if (user && !username) {
+          const o = JSON.parse(user);
+          username = o.username || o.user_name || o.login || o.email || o.student_email || "";
+        }
+      }
+      if (!authToken || !username) { alert("sign in first"); return; }
+
+      // 2. ECIES to the CLI's public key (must match encryptForCli in
+      //    ontrack-cli src/lib/pair-login.ts):
+      //      ephemeral ECDH P-256 -> deriveBits(256)
+      //      -> HKDF-SHA256(salt = 32 zero bytes, info = "ontrack-pair-v1")
+      //      -> AES-256-GCM, 12-byte random nonce
+      //    envelope {"v":1,"eph":b64url(spki),"nonce":b64url,"ct":b64url}
+      const envelope = await eciesEncrypt(K, { authToken, username });
+
+      // 3. Deliver: PUT R + "/m/" + M. If the OnTrack page CSP connect-src
+      //    blocks fetch, fall back to navigating to
+      //      P + "#d=" + encodeURIComponent(JSON.stringify(envelope)) + "&m=" + M
+      //    so this page delivers it instead (fragments never hit the network).
+    })();
+-->
+<script>
+"use strict";
+
+// ---- pure helpers (no DOM; keep in sync with ontrack-cli src/lib/pair-login.ts) ----
+
+const subtle = crypto.subtle;
+const textEncoder = new TextEncoder();
+
+const b64urlEncode = (buf) => {
+  const s = btoa(String.fromCharCode(...new Uint8Array(buf)));
+  return s.split("+").join("-").split("/").join("_").replace(/=+$/, "");
+};
+
+const b64urlDecode = (value) => {
+  let s = value.split("-").join("+").split("_").join("/");
+  while (s.length % 4) s += "=";
+  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+};
+
+const toHex = (buf) =>
+  [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+/** mailboxId = SHA-256 hex of the 16-char base32 pairing code. */
+async function deriveMailboxId(code) {
+  return toHex(await subtle.digest("SHA-256", textEncoder.encode(code)));
+}
+
+/**
+ * ECIES encrypt — byte-compatible with encryptForCli in ontrack-cli
+ * src/lib/pair-login.ts: ECDH P-256 -> HKDF-SHA256 (salt 32 zero bytes,
+ * info "ontrack-pair-v1") -> AES-256-GCM with a 12-byte nonce.
+ */
+async function encryptForCli(cliPublicKeyBase64Url, payload) {
+  const cliKey = await subtle.importKey(
+    "spki", b64urlDecode(cliPublicKeyBase64Url),
+    { name: "ECDH", namedCurve: "P-256" }, false, [],
+  );
+  const ephemeral = await subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"],
+  );
+  const sharedBits = await subtle.deriveBits(
+    { name: "ECDH", public: cliKey }, ephemeral.privateKey, 256,
+  );
+  const hkdfKey = await subtle.importKey("raw", sharedBits, "HKDF", false, ["deriveKey"]);
+  const aesKey = await subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new Uint8Array(32),
+      info: textEncoder.encode("ontrack-pair-v1"),
+    },
+    hkdfKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt"],
+  );
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await subtle.encrypt(
+    { name: "AES-GCM", iv: nonce }, aesKey,
+    textEncoder.encode(JSON.stringify(payload)),
+  );
+  const ephSpki = await subtle.exportKey("spki", ephemeral.publicKey);
+  return {
+    v: 1,
+    eph: b64urlEncode(ephSpki),
+    nonce: b64urlEncode(nonce),
+    ct: b64urlEncode(ciphertext),
+  };
+}
+
+async function putEnvelope(mailboxId, body) {
+  return fetch(location.origin + "/m/" + mailboxId, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body,
+  });
+}
+
+// Compact bookmarklet source. __K__/__R__/__M__/__P__ are replaced with
+// JSON-quoted session values. See the HTML comment above for a readable version.
+const BOOKMARKLET_LINES = [
+'javascript:(async()=>{',
+'const K=__K__,R=__R__,M=__M__,P=__P__,S=crypto.subtle,T=new TextEncoder(),J=JSON.stringify,L=localStorage,G={name:"ECDH",namedCurve:"P-256"};',
+'const b6=a=>{let s=btoa(String.fromCharCode(...new Uint8Array(a)));return s.split("+").join("-").split("/").join("_").replace(/=+$/,"")};',
+'let t,u;',
+'try{const q=new URLSearchParams(location.search);t=q.get("authToken");u=q.get("username")}catch(e){}',
+'if(!t||!u)try{',
+'let v=L.getItem("doubtfire_credentials_token");',
+'if(v&&!t){try{const p=JSON.parse(v);if(typeof p=="string")v=p}catch(e){}t=v}',
+'const w=L.getItem("doubtfire_user");',
+'if(w&&!u){const o=JSON.parse(w);u=o.username||o.user_name||o.login||o.email||o.student_email}',
+'}catch(e){}',
+'if(!t||!u){alert("No OnTrack session found - sign in, then click this bookmark again.");return}',
+// K is base64url of a P-256 SPKI (91 bytes), so it always needs exactly "==" padding.
+'const C=await S.importKey("spki",Uint8Array.from(atob(K.split("-").join("+").split("_").join("/")+"=="),c=>c.charCodeAt(0)),G,!1,[]);',
+'const E=await S.generateKey(G,!1,["deriveBits"]);',
+'const A=await S.deriveKey({name:"HKDF",hash:"SHA-256",salt:new Uint8Array(32),info:T.encode("ontrack-pair-v1")},await S.importKey("raw",await S.deriveBits({name:"ECDH",public:C},E.privateKey,256),"HKDF",!1,["deriveKey"]),{name:"AES-GCM",length:256},!1,["encrypt"]);',
+'const N=crypto.getRandomValues(new Uint8Array(12));',
+'const D=J({v:1,eph:b6(await S.exportKey("spki",E.publicKey)),nonce:b6(N),ct:b6(await S.encrypt({name:"AES-GCM",iv:N},A,T.encode(J({authToken:t,username:u}))))});',
+// No content-type header: keeps the PUT a CORS "simple request" (no preflight).
+'try{const r=await fetch(R+"/m/"+M,{method:"PUT",body:D});',
+'if(!r.ok&&r.status!=409)throw 0;',
+'alert("Sent to your CLI. You can close this tab.")}catch(e){',
+'location.href=P+"#d="+encodeURIComponent(D)+"&m="+M}',
+'})().catch(e=>alert("Pairing failed: "+(e&&e.message||e)))'
+];
+
+function buildBookmarklet({ K, R, M, P }) {
+  return BOOKMARKLET_LINES.join("")
+    .replaceAll("__K__", JSON.stringify(K))
+    .replaceAll("__R__", JSON.stringify(R))
+    .replaceAll("__M__", JSON.stringify(M))
+    .replaceAll("__P__", JSON.stringify(P));
+}
+
+// ---- DOM bootstrap ----
+
+const $ = (id) => document.getElementById(id);
+
+function showView(id) {
+  for (const view of ["view-error", "view-deliver", "view-pair"]) {
+    $(view).hidden = view !== id;
+  }
+}
+
+function setStatus(elementId, message, kind) {
+  const el = $(elementId);
+  el.textContent = message;
+  el.className = "status " + kind;
+  el.hidden = false;
+}
+
+function showError(detail) {
+  $("error-detail").textContent = detail;
+  showView("view-error");
+}
+
+/** `#d=` fallback receiver: the bookmarklet bounced its envelope here. */
+async function deliverMode(params) {
+  showView("view-deliver");
+  const raw = params.get("d");
+  const mailbox =
+    params.get("m") || (params.get("c") ? await deriveMailboxId(params.get("c")) : null);
+
+  let envelope = null;
+  try {
+    envelope = JSON.parse(raw);
+  } catch {
+    envelope = null;
+  }
+  const shapeOk =
+    envelope &&
+    envelope.v === 1 &&
+    typeof envelope.eph === "string" &&
+    typeof envelope.nonce === "string" &&
+    typeof envelope.ct === "string";
+  if (!shapeOk) {
+    setStatus("deliver-status", "The payload in this link is malformed. Go back to the OnTrack tab and click the bookmark again.", "err");
+    return;
+  }
+  if (!mailbox || !/^[0-9a-f]{64}$/i.test(mailbox)) {
+    setStatus("deliver-status", "This link is missing its mailbox id. Open the full pairing link from your CLI and try again.", "err");
+    return;
+  }
+
+  setStatus("deliver-status", "Sending your encrypted credential to the CLI\u2026", "info");
+  try {
+    const response = await putEnvelope(mailbox, raw);
+    if (response.ok) {
+      setStatus("deliver-status", "Sent \u2014 you can close this page. Your CLI will finish signing in automatically.", "ok");
+    } else if (response.status === 409) {
+      setStatus("deliver-status", "Already delivered \u2014 you can close this page.", "ok");
+    } else if (response.status === 429) {
+      setStatus("deliver-status", "The relay is rate-limiting right now. Wait a minute, then go back and click the bookmark again.", "err");
+    } else {
+      setStatus("deliver-status", "The relay answered with HTTP " + response.status + ". Go back to the OnTrack tab and click the bookmark again.", "err");
+    }
+  } catch (error) {
+    setStatus("deliver-status", "Could not reach the relay (" + (error && error.message || error) + "). Check your connection and try again.", "err");
+  }
+}
+
+async function pairMode(params) {
+  const code = params.get("c");
+  const key = params.get("k");
+
+  const missing = [];
+  if (!code) missing.push("c (the pairing code)");
+  if (!key) missing.push("k (the CLI public key)");
+  if (missing.length) {
+    showError("Missing " + missing.join(" and ") + " in the link fragment.");
+    return;
+  }
+  if (!/^[a-z2-7]{16}$/.test(code)) {
+    showError("The pairing code in the link is malformed.");
+    return;
+  }
+  try {
+    await subtle.importKey("spki", b64urlDecode(key), { name: "ECDH", namedCurve: "P-256" }, false, []);
+  } catch {
+    showError("The CLI public key embedded in the link is malformed.");
+    return;
+  }
+
+  const mailbox = await deriveMailboxId(code);
+  const pageUrl = location.origin + location.pathname;
+  const source = buildBookmarklet({ K: key, R: location.origin, M: mailbox, P: pageUrl });
+
+  $("bookmarklet").href = source;
+  $("code-display").textContent = code.replace(/(.{4})(?=.)/g, "$1-");
+  showView("view-pair");
+
+  $("bookmarklet").addEventListener("click", (event) => {
+    event.preventDefault();
+    setStatus("pair-status", "Drag this button into your bookmarks bar first \u2014 then, after signing in, click it while you are on the OnTrack page.", "info");
+  });
+
+  $("copy-bookmarklet").addEventListener("click", async () => {
+    const button = $("copy-bookmarklet");
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(source);
+      copied = true;
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = source;
+      document.body.appendChild(area);
+      area.select();
+      try {
+        copied = document.execCommand("copy");
+      } catch {
+        copied = false;
+      }
+      area.remove();
+    }
+    button.textContent = copied ? "Copied!" : "Copy failed \u2014 drag instead";
+    setTimeout(() => { button.textContent = "Copy bookmarklet"; }, 2500);
+  });
+
+  // Mobile / no-bookmarklet fallback: paste the sign_in landing URL.
+  $("paste-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    let url = null;
+    try {
+      url = new URL($("paste-input").value.trim());
+    } catch {
+      setStatus("pair-status", "That is not a valid URL.", "err");
+      return;
+    }
+    if (url.origin !== "https://ontrack.infotech.monash.edu") {
+      setStatus("pair-status", "The URL must be on https://ontrack.infotech.monash.edu.", "err");
+      return;
+    }
+    const authToken = url.searchParams.get("authToken");
+    const username = url.searchParams.get("username");
+    if (!authToken || !username) {
+      setStatus("pair-status", "That URL has no authToken/username parameters. Copy the full address right after sign-in lands.", "err");
+      return;
+    }
+    setStatus("pair-status", "Encrypting and sending\u2026", "info");
+    try {
+      const envelope = await encryptForCli(key, { authToken, username });
+      const response = await putEnvelope(mailbox, JSON.stringify(envelope));
+      if (response.ok) {
+        setStatus("pair-status", "Sent \u2014 you can close this page. Your CLI will finish signing in automatically.", "ok");
+      } else if (response.status === 409) {
+        setStatus("pair-status", "Already delivered \u2014 you can close this page.", "ok");
+      } else if (response.status === 429) {
+        setStatus("pair-status", "The relay is rate-limiting right now. Wait a minute and try again.", "err");
+      } else {
+        setStatus("pair-status", "The relay answered with HTTP " + response.status + ". Try again.", "err");
+      }
+    } catch (error) {
+      setStatus("pair-status", "Failed: " + (error && error.message || error), "err");
+    }
+  });
+}
+
+(async () => {
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get("d")) {
+    await deliverMode(params);
+    return;
+  }
+  await pairMode(params);
+})().catch((error) => {
+  showError("Unexpected error: " + (error && error.message || error));
+});
+</script>
+</body>
+</html>
