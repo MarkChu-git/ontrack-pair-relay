@@ -1,14 +1,27 @@
 /**
- * The generated bookmarklet, built per pairing session. __K__/__R__/__M__/__P__
- * are replaced with JSON-quoted session values (CLI public key, relay origin,
- * mailbox id, this page's URL for the CSP fallback), and __MSG_NOSESSION__ /
- * __MSG_SENT__ / __MSG_FAILED_PREFIX__ with the alert strings baked in the
- * page's current language.
+ * The PERMANENT pairing bookmarklet. It carries no session data: the relay
+ * origin (R) and this page's URL (P, for the CSP fallback) are baked in when
+ * the user installs it, and the alert strings are baked in the install-time
+ * language. Everything session-specific (the pairing code and the CLI's
+ * one-time public key) is supplied per login by pasting the pairing link
+ * into the bookmark's prompt, so the bookmark never needs re-installing.
  *
  * Readable reference version:
  *
  *   (async () => {
- *     // 1. Grab credentials: sign_in landing URL query first, then OnTrack localStorage.
+ *     // 1. Ask for this session's pairing link and parse c + k out of its
+ *     //    fragment (the fragment never travels over the network).
+ *     const link = prompt(<paste-link message>);
+ *     if (!link) return;
+ *     const h = new URLSearchParams(new URL(link).hash.slice(1));
+ *     const code = h.get("c"), K = h.get("k");
+ *     if (!code || !K) { alert(<bad-link message>); return; }
+ *
+ *     // 2. mailboxId = SHA-256 hex of the pairing code (matches ontrack-cli
+ *     //    src/lib/pair-login.ts deriveMailboxId).
+ *     const M = toHex(await crypto.subtle.digest("SHA-256", te.encode(code)));
+ *
+ *     // 3. Grab credentials: sign_in landing URL query first, then OnTrack localStorage.
  *     const q = new URLSearchParams(location.search);
  *     let authToken = q.get("authToken") || "";
  *     let username = q.get("username") || "";
@@ -26,7 +39,7 @@
  *     }
  *     if (!authToken || !username) { alert(<no-session message>); return; }
  *
- *     // 2. ECIES to the CLI's public key (must match encryptForCli in
+ *     // 4. ECIES to the CLI's public key (must match encryptForCli in
  *     //    ontrack-cli src/lib/pair-login.ts):
  *     //      ephemeral ECDH P-256 -> deriveBits(256)
  *     //      -> HKDF-SHA256(salt = 32 zero bytes, info = "ontrack-pair-v1")
@@ -34,7 +47,7 @@
  *     //    envelope {"v":1,"eph":b64url(spki),"nonce":b64url,"ct":b64url}
  *     const envelope = await eciesEncrypt(K, { authToken, username });
  *
- *     // 3. Deliver: PUT R + "/m/" + M. If the OnTrack page CSP connect-src
+ *     // 5. Deliver: PUT R + "/m/" + M. If the OnTrack page CSP connect-src
  *     //    blocks fetch, fall back to navigating to
  *     //      P + "#d=" + encodeURIComponent(JSON.stringify(envelope)) + "&m=" + M
  *     //    so this page delivers it instead (fragments never hit the network).
@@ -42,8 +55,14 @@
  */
 const BOOKMARKLET_LINES = [
   'javascript:(async()=>{',
-  'const K=__K__,R=__R__,M=__M__,P=__P__,S=crypto.subtle,T=new TextEncoder(),J=JSON.stringify,L=localStorage,G={name:"ECDH",namedCurve:"P-256"};',
+  'const R=__R__,P=__P__,S=crypto.subtle,T=new TextEncoder(),J=JSON.stringify,L=localStorage,G={name:"ECDH",namedCurve:"P-256"};',
   'const b6=a=>{let s=btoa(String.fromCharCode(...new Uint8Array(a)));return s.split("+").join("-").split("/").join("_").replace(/=+$/,"")};',
+  'const link=prompt(__MSG_PASTE_LINK__);',
+  'if(!link)return;',
+  'let code,K;',
+  'try{const h=new URLSearchParams(new URL(link).hash.slice(1));code=h.get("c");K=h.get("k")}catch(e){}',
+  'if(!code||!K){alert(__MSG_BAD_LINK__);return}',
+  'const M=[...new Uint8Array(await S.digest("SHA-256",T.encode(code)))].map(b=>b.toString(16).padStart(2,"0")).join("");',
   'let t,u;',
   'try{const q=new URLSearchParams(location.search);t=q.get("authToken");u=q.get("username")}catch(e){}',
   'if(!t||!u)try{',
@@ -68,14 +87,14 @@ const BOOKMARKLET_LINES = [
 ];
 
 export interface BookmarkletParams {
-  /** base64url SPKI of the CLI's ephemeral P-256 public key. */
-  K: string;
   /** Relay origin (this page's origin). */
   R: string;
-  /** Mailbox id = SHA-256 hex of the pairing code. */
-  M: string;
   /** This page's URL, target of the CSP-fallback `#d=` navigation. */
   P: string;
+  /** prompt() text asking for this session's pairing link. */
+  msgPasteLink: string;
+  /** alert() text when the pasted text is not a pairing link. */
+  msgBadLink: string;
   /** alert() text when no OnTrack session is found. */
   msgNoSession: string;
   /** alert() text after a successful (or duplicate) delivery. */
@@ -85,19 +104,19 @@ export interface BookmarkletParams {
 }
 
 export function buildBookmarklet({
-  K,
   R,
-  M,
   P,
+  msgPasteLink,
+  msgBadLink,
   msgNoSession,
   msgSent,
   msgFailedPrefix,
 }: BookmarkletParams): string {
   return BOOKMARKLET_LINES.join('')
-    .replaceAll('__K__', JSON.stringify(K))
     .replaceAll('__R__', JSON.stringify(R))
-    .replaceAll('__M__', JSON.stringify(M))
     .replaceAll('__P__', JSON.stringify(P))
+    .replaceAll('__MSG_PASTE_LINK__', JSON.stringify(msgPasteLink))
+    .replaceAll('__MSG_BAD_LINK__', JSON.stringify(msgBadLink))
     .replaceAll('__MSG_NOSESSION__', JSON.stringify(msgNoSession))
     .replaceAll('__MSG_SENT__', JSON.stringify(msgSent))
     .replaceAll('__MSG_FAILED_PREFIX__', JSON.stringify(msgFailedPrefix));

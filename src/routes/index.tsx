@@ -46,7 +46,11 @@ function PairingPage() {
   const [pairStatus, setPairStatus] = useState<StatusMessage | null>(null);
   const [bookmarkletHref, setBookmarkletHref] = useState('#');
   const [displayCode, setDisplayCode] = useState('');
-  const [copyLabel, setCopyLabel] = useState<string | null>(null);
+  const [sessionLink, setSessionLink] = useState('');
+  const [copiedWhich, setCopiedWhich] = useState<'bm' | 'link' | null>(null);
+  const [relayStatus, setRelayStatus] = useState<'waiting' | 'received' | 'collected'>(
+    'waiting',
+  );
   const pairSessionRef = useRef<PairSession | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -62,10 +66,10 @@ function PairingPage() {
     const session = pairSessionRef.current;
     if (!session) return;
     const source = buildBookmarklet({
-      K: session.K,
       R: session.R,
-      M: session.M,
       P: session.P,
+      msgPasteLink: translate(langNow, 'bmPasteLink'),
+      msgBadLink: translate(langNow, 'bmBadLink'),
       msgNoSession: translate(langNow, 'bmNoSession'),
       msgSent: translate(langNow, 'bmSent'),
       msgFailedPrefix: translate(langNow, 'bmFailed', ''),
@@ -156,8 +160,39 @@ function PairingPage() {
     rebuildBookmarklet(langNow);
 
     setDisplayCode((code as string).replace(/(.{4})(?=.)/g, '$1-'));
+    setSessionLink(window.location.href);
     setView('pair');
   }
+
+  // Live relay status: HEAD is read-only (it never consumes the envelope), so
+  // the page can follow waiting -> received -> collected as the CLI polls GET.
+  useEffect(() => {
+    if (view !== 'pair' || relayStatus === 'collected') return;
+    const mailbox = pairSessionRef.current?.M;
+    if (!mailbox) return;
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const response = await fetch(`${window.location.origin}/m/${mailbox}`, {
+          method: 'HEAD',
+        });
+        if (stopped) return;
+        if (response.ok) {
+          setRelayStatus((prev) => (prev === 'waiting' ? 'received' : prev));
+        } else if (response.status === 404) {
+          setRelayStatus((prev) => (prev === 'received' ? 'collected' : prev));
+        }
+      } catch {
+        // Transient network errors keep the current status.
+      }
+    };
+    const timer = setInterval(() => void tick(), 2500);
+    void tick();
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [view, relayStatus]);
 
   // Bootstrap: detect the language, then parse the URL fragment (it never
   // leaves the browser, so all of this happens client-side after mount).
@@ -192,28 +227,43 @@ function PairingPage() {
     setPairStatus({ kind: 'info', key: 'dragFirst' });
   };
 
-  const onCopyBookmarklet = async () => {
-    const session = pairSessionRef.current;
-    if (!session) return;
-    let copied = false;
+  const copyText = async (text: string): Promise<boolean> => {
     try {
-      await navigator.clipboard.writeText(session.source);
-      copied = true;
+      await navigator.clipboard.writeText(text);
+      return true;
     } catch {
       const area = document.createElement('textarea');
-      area.value = session.source;
+      area.value = text;
       document.body.appendChild(area);
       area.select();
+      let copied = false;
       try {
         copied = document.execCommand('copy');
       } catch {
         copied = false;
       }
       area.remove();
+      return copied;
     }
-    setCopyLabel(copied ? 'copied' : 'copyFailed');
+  };
+
+  const flashCopied = (which: 'bm' | 'link', ok: boolean) => {
+    if (ok) setCopiedWhich(which);
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-    copyTimerRef.current = setTimeout(() => setCopyLabel(null), 2500);
+    copyTimerRef.current = setTimeout(() => setCopiedWhich(null), 2500);
+    return ok;
+  };
+
+  const onCopyBookmarklet = async () => {
+    const session = pairSessionRef.current;
+    if (!session) return;
+    const ok = await copyText(session.source);
+    if (!flashCopied('bm', ok)) setPairStatus({ kind: 'err', key: 'copyFailed' });
+  };
+
+  const onCopyLink = async () => {
+    const ok = await copyText(sessionLink);
+    if (!flashCopied('link', ok)) setPairStatus({ kind: 'err', key: 'copyFailed' });
   };
 
   // Mobile / no-bookmarklet fallback: paste the sign_in landing URL.
@@ -339,7 +389,7 @@ function PairingPage() {
                 type="button"
                 onClick={onCopyBookmarklet}
               >
-                {copyLabel ? t(copyLabel) : t('copyBtn')}
+                {copiedWhich === 'bm' ? t('copied') : t('copyBtn')}
               </button>
             </p>
             <p className="muted small">{t('step1Hint')}</p>
@@ -361,6 +411,20 @@ function PairingPage() {
           <li>
             <h3>{t('step3Title')}</h3>
             <p className="muted small">{t('step3Body')}</p>
+            <p className="muted small" style={{ marginBottom: 4 }}>
+              {t('linkLabel')}:
+            </p>
+            <p className="btnrow" style={{ marginTop: 0 }}>
+              <code className="small" style={{ wordBreak: 'break-all' }}>{sessionLink}</code>
+              <button
+                id="copy-link"
+                className="btn ghost"
+                type="button"
+                onClick={onCopyLink}
+              >
+                {copiedWhich === 'link' ? t('copied') : t('copyLinkBtn')}
+              </button>
+            </p>
           </li>
         </ol>
 
@@ -391,6 +455,16 @@ function PairingPage() {
           hidden={!pairStatus}
         >
           {pairStatus ? t(pairStatus.key, pairStatus.arg) : null}
+        </p>
+        <p
+          id="relay-status"
+          className={`status ${relayStatus === 'collected' ? 'ok' : 'info'}`}
+        >
+          {relayStatus === 'collected'
+            ? t('statusCollected')
+            : relayStatus === 'received'
+              ? t('statusReceived')
+              : t('statusWaiting')}
         </p>
         <p className="muted small" style={{ marginTop: 18 }}>
           {t('codeLabel')}{' '}

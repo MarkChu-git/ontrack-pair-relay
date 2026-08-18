@@ -117,12 +117,27 @@ async function handleGet(id: string): Promise<Response> {
   return respond(200, value);
 }
 
+/**
+ * Read-only presence check for the pairing page's live status display.
+ * Unlike GET it never consumes the envelope.
+ */
+async function handleHead(id: string): Promise<Response> {
+  const value = await env.MAILBOXES.get(id);
+  return value === null ? respond(404) : respond(200);
+}
+
 export const Route = createFileRoute('/m/$id')({
   server: {
     handlers: {
-      GET: async ({ params }) => {
+      GET: async ({ request, params }) => {
         if (!MAILBOX_ID.test(params.id)) {
           return badMailboxId();
+        }
+        // The router answers HEAD with this handler; HEAD must only report
+        // presence, never consume the envelope (the pairing page polls it for
+        // the live status display).
+        if (request.method === 'HEAD') {
+          return handleHead(params.id.toLowerCase());
         }
         return handleGet(params.id.toLowerCase());
       },

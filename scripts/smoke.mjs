@@ -72,6 +72,24 @@ await check('invalid mailbox id is 400', async () => {
   expect(response.status === 400, `expected 400, got ${response.status}`);
 });
 
+await check('HEAD reports presence without consuming the envelope', async () => {
+  const id = newMailboxId();
+  const body = JSON.stringify(envelope);
+
+  const before = await fetch(`${BASE_URL}/m/${id}`, { method: 'HEAD' });
+  expect(before.status === 404, `HEAD before PUT expected 404, got ${before.status}`);
+
+  expect((await put(id, body)).status === 200, 'PUT should succeed');
+  const present = await fetch(`${BASE_URL}/m/${id}`, { method: 'HEAD' });
+  expect(present.status === 200, `HEAD after PUT expected 200, got ${present.status}`);
+
+  const stillThere = await fetch(`${BASE_URL}/m/${id}`);
+  expect(stillThere.status === 200, 'HEAD must not consume the envelope');
+
+  const afterGet = await fetch(`${BASE_URL}/m/${id}`, { method: 'HEAD' });
+  expect(afterGet.status === 404, `HEAD after GET expected 404, got ${afterGet.status}`);
+});
+
 await check('body over 8KB is 413', async () => {
   const id = newMailboxId();
   const response = await put(id, 'x'.repeat(8 * 1024 + 1));
