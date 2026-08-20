@@ -21,7 +21,15 @@
  *     //    src/lib/pair-login.ts deriveMailboxId).
  *     const M = toHex(await crypto.subtle.digest("SHA-256", te.encode(code)));
  *
- *     // 3. Grab credentials: sign_in landing URL query first, then OnTrack localStorage.
+ *     // 3. Grab credentials, in order:
+     *     //    a. sign_in landing URL query (?authToken=...&username=...) —
+     *     //       only present for a moment after the SSO redirect.
+     *     //    b. POST /api/auth/access-token — doubtfire >=11 keeps the token
+     *     //       in memory only; the HttpOnly refresh_token cookie (carried
+     *     //       automatically by the same-origin fetch) mints a fresh one.
+     *     //       Response: {user: {username...}, auth_token, auth_token_expiry}.
+     *     //    c. legacy localStorage (doubtfire <=10):
+     *     //       doubtfire_credentials_token / doubtfire_user.
  *     const q = new URLSearchParams(location.search);
  *     let authToken = q.get("authToken") || "";
  *     let username = q.get("username") || "";
@@ -65,6 +73,14 @@ const BOOKMARKLET_LINES = [
   'const M=[...new Uint8Array(await S.digest("SHA-256",T.encode(code)))].map(b=>b.toString(16).padStart(2,"0")).join("");',
   'let t,u;',
   'try{const q=new URLSearchParams(location.search);t=q.get("authToken");u=q.get("username")}catch(e){}',
+  // doubtfire >=11 keeps the token in memory only; mint a fresh one via the
+  // HttpOnly refresh cookie (the same-origin fetch carries it automatically).
+  'if(!t||!u)try{',
+  'const r=await fetch("/api/auth/access-token",{method:"POST"});',
+  'if(r.ok){const j=await r.json();',
+  'if(j&&j.auth_token){t=j.auth_token;const o=j.user||{};u=o.username||o.user_name||o.login||o.email||o.student_email}}',
+  '}catch(e){}',
+  // Legacy localStorage layout (doubtfire <=10).
   'if(!t||!u)try{',
   'let v=L.getItem("doubtfire_credentials_token");',
   'if(v&&!t){try{const p=JSON.parse(v);if(typeof p=="string")v=p}catch(e){}t=v}',
