@@ -300,7 +300,12 @@ function PairingPage() {
     }
     setPairStatus({ kind: 'info', key: 'encrypting' });
     try {
-      const envelope = await encryptForCli(session.K, { authToken, username });
+      // A landing-URL token is always a pending one-time login token.
+      const envelope = await encryptForCli(session.K, {
+        authToken,
+        username,
+        contract: 'legacy-auth',
+      });
       const response = await putEnvelope(
         window.location.origin,
         session.M,

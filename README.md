@@ -40,8 +40,19 @@ byte-compatible with it.
   HKDF-SHA256 (salt = 32 zero bytes, info `ontrack-pair-v1`) → AES-256-GCM,
   12-byte nonce, envelope `{"v":1,"eph","nonce","ct"}` base64url without
   padding; mailboxId = SHA-256 hex of the pairing code.
-- `src/lib/bookmarklet.ts` — bookmarklet source template and builder.
+- `src/lib/bookmarklet.ts` — bookmarklet source template and builder. It
+  delivers `{authToken, username, expiresAt?, contract?}` and tries credential
+  sources in this order: `POST /api/auth/access-token` (doubtfire ≥11 keeps the
+  token in memory only, and the same-origin fetch carries the HttpOnly refresh
+  cookie that mints a fresh one), then the `sign_in?authToken=` landing URL,
+  then the legacy `localStorage` keys. `contract` tells the CLI whether the token
+  is already usable (`access-token`) or is a pending one-time login token that
+  still needs the `POST /auth` exchange (`legacy-auth`) — sending the former to
+  that endpoint is answered with 419, so mislabelling it breaks the login.
 - `scripts/smoke.mjs` — smoke test against a running deployment.
+- `scripts/check-bookmarklet.ts` — runs the real bookmarklet against stubbed
+  browser globals and decrypts what it delivered, so a wrong credential source
+  or contract fails here instead of during someone's login.
 
 ## Develop
 
@@ -50,19 +61,26 @@ npm/npx).
 
 ```sh
 bun install
-bun run dev        # vite dev on http://localhost:5173 (local KV simulation)
-bun run smoke      # smoke test: BASE_URL=http://localhost:5173 bun run smoke
+bun run dev                # vite dev on http://localhost:5173 (local KV simulation)
+bun run smoke              # smoke test: BASE_URL=http://localhost:5173 bun run smoke
+bun run check:bookmarklet  # bookmarklet behaviour, no deployment needed
 ```
 
 The smoke test covers: PUT → GET → GET 404 (one-shot delivery), duplicate PUT
 409 without overwrite, invalid id 400, oversized body 413.
+
+The bookmarklet check covers each credential source and the contract it reports,
+minting winning over the single-use landing-URL token, the no-credential and
+bad-link alerts, and the `#d=` CSP fallback. Run it after any edit to
+`src/lib/bookmarklet.ts`: that code only ever executes on OnTrack's origin, so
+nothing else catches a mistake before a user's login fails.
 
 Other scripts:
 
 ```sh
 bun run build      # vite build -> dist/ (client + server)
 bun run cf-typegen # regenerate worker-configuration.d.ts from wrangler.jsonc
-bunx tsc --noEmit  # type-check
+bun run typecheck  # tsc --noEmit
 ```
 
 `src/routeTree.gen.ts` and `worker-configuration.d.ts` are generated artifacts
