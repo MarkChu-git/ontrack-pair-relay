@@ -21,23 +21,48 @@
  *     //    src/lib/pair-login.ts deriveMailboxId).
  *     const M = toHex(await crypto.subtle.digest("SHA-256", te.encode(code)));
  *
- *     // 3. Grab credentials, in order:
-     *     //    a. sign_in landing URL query (?authToken=...&username=...) —
-     *     //       only present for a moment after the SSO redirect.
-     *     //    b. POST /api/auth/access-token — doubtfire >=11 keeps the token
+ *     // 3. Grab credentials, in order. Each source also fixes the `contract`
+     *     //    the CLI must honour: an access token is already usable and has to
+     *     //    be sent as-is, while a one-time login token still needs the
+     *     //    `POST /auth` exchange. Offering an access token to `/auth` is
+     *     //    answered with 419, which is why the source is reported.
+     *     //    a. POST /api/auth/access-token — doubtfire >=11 keeps the token
      *     //       in memory only; the HttpOnly refresh_token cookie (carried
      *     //       automatically by the same-origin fetch) mints a fresh one.
      *     //       Response: {user: {username...}, auth_token, auth_token_expiry}.
+     *     //       Tried first: unlike the landing-URL token below it is fresh,
+     *     //       carries an expiry, and is not single-use.
+     *     //    b. sign_in landing URL query (?authToken=...&username=...) —
+     *     //       only present for a moment after the SSO redirect, and the web
+     *     //       app usually spends it before this runs.
      *     //    c. legacy localStorage (doubtfire <=10):
-     *     //       doubtfire_credentials_token / doubtfire_user.
- *     const q = new URLSearchParams(location.search);
- *     let authToken = q.get("authToken") || "";
- *     let username = q.get("username") || "";
+     *     //       doubtfire_credentials_token / doubtfire_user, which is itself
+     *     //       an API token.
+ *     let authToken = "", username = "", contract, expiresAt;
+ *     const minted = await fetch("/api/auth/access-token", { method: "POST" });
+ *     if (minted.ok) {
+ *       const j = await minted.json();
+ *       if (j && j.auth_token) {
+ *         authToken = j.auth_token;
+ *         contract = "access-token";
+ *         expiresAt = j.auth_token_expiry;
+ *         username = (j.user || {}).username || ...;
+ *       }
+ *     }
+ *     if (!authToken || !username) {
+ *       const q = new URLSearchParams(location.search);
+ *       if (!authToken) {
+ *         authToken = q.get("authToken");
+ *         if (authToken) contract = "legacy-auth";
+ *       }
+ *       if (!username) username = q.get("username");
+ *     }
  *     if (!authToken || !username) {
  *       let raw = localStorage.getItem("doubtfire_credentials_token"); // may be a JSON string
  *       if (raw && !authToken) {
  *         try { const p = JSON.parse(raw); if (typeof p === "string") raw = p; } catch {}
  *         authToken = raw;
+ *         contract = "access-token";
  *       }
  *       const user = localStorage.getItem("doubtfire_user"); // JSON object
  *       if (user && !username) {
@@ -53,7 +78,10 @@
  *     //      -> HKDF-SHA256(salt = 32 zero bytes, info = "ontrack-pair-v1")
  *     //      -> AES-256-GCM, 12-byte random nonce
  *     //    envelope {"v":1,"eph":b64url(spki),"nonce":b64url,"ct":b64url}
- *     const envelope = await eciesEncrypt(K, { authToken, username });
+ *     //    JSON.stringify drops the two optional fields when unset.
+ *     const envelope = await eciesEncrypt(K, {
+ *       authToken, username, expiresAt, contract,
+ *     });
  *
  *     // 5. Deliver: PUT R + "/m/" + M. If the OnTrack page CSP connect-src
  *     //    blocks fetch, fall back to navigating to
@@ -71,19 +99,27 @@ const BOOKMARKLET_LINES = [
   'try{const h=new URLSearchParams(new URL(link).hash.slice(1));code=h.get("c");K=h.get("k")}catch(e){}',
   'if(!code||!K){alert(__MSG_BAD_LINK__);return}',
   'const M=[...new Uint8Array(await S.digest("SHA-256",T.encode(code)))].map(b=>b.toString(16).padStart(2,"0")).join("");',
-  'let t,u;',
-  'try{const q=new URLSearchParams(location.search);t=q.get("authToken");u=q.get("username")}catch(e){}',
+  // t/u are the credential, c its contract, x its expiry when the source knows
+  // one. c decides whether the CLI may use the token directly or has to
+  // exchange it, so it is set wherever t is.
+  'let t,u,c,x;',
   // doubtfire >=11 keeps the token in memory only; mint a fresh one via the
   // HttpOnly refresh cookie (the same-origin fetch carries it automatically).
-  'if(!t||!u)try{',
+  // Tried first: the landing-URL token below is single-use and the web app has
+  // usually already spent it by the time this bookmarklet runs.
+  'try{',
   'const r=await fetch("/api/auth/access-token",{method:"POST"});',
   'if(r.ok){const j=await r.json();',
-  'if(j&&j.auth_token){t=j.auth_token;const o=j.user||{};u=o.username||o.user_name||o.login||o.email||o.student_email}}',
+  'if(j&&j.auth_token){t=j.auth_token;c="access-token";x=j.auth_token_expiry;const o=j.user||{};u=o.username||o.user_name||o.login||o.email||o.student_email}}',
   '}catch(e){}',
-  // Legacy localStorage layout (doubtfire <=10).
+  // sign_in?authToken=... landing URL: a pending one-time login token.
+  'if(!t||!u)try{const q=new URLSearchParams(location.search);',
+  'if(!t){t=q.get("authToken");if(t)c="legacy-auth"}',
+  'if(!u)u=q.get("username")}catch(e){}',
+  // Legacy localStorage layout (doubtfire <=10), itself already an API token.
   'if(!t||!u)try{',
   'let v=L.getItem("doubtfire_credentials_token");',
-  'if(v&&!t){try{const p=JSON.parse(v);if(typeof p=="string")v=p}catch(e){}t=v}',
+  'if(v&&!t){try{const p=JSON.parse(v);if(typeof p=="string")v=p}catch(e){}t=v;c="access-token"}',
   'const w=L.getItem("doubtfire_user");',
   'if(w&&!u){const o=JSON.parse(w);u=o.username||o.user_name||o.login||o.email||o.student_email}',
   '}catch(e){}',
@@ -93,7 +129,8 @@ const BOOKMARKLET_LINES = [
   'const E=await S.generateKey(G,!1,["deriveBits"]);',
   'const A=await S.deriveKey({name:"HKDF",hash:"SHA-256",salt:new Uint8Array(32),info:T.encode("ontrack-pair-v1")},await S.importKey("raw",await S.deriveBits({name:"ECDH",public:C},E.privateKey,256),"HKDF",!1,["deriveKey"]),{name:"AES-GCM",length:256},!1,["encrypt"]);',
   'const N=crypto.getRandomValues(new Uint8Array(12));',
-  'const D=J({v:1,eph:b6(await S.exportKey("spki",E.publicKey)),nonce:b6(N),ct:b6(await S.encrypt({name:"AES-GCM",iv:N},A,T.encode(J({authToken:t,username:u}))))});',
+  // J drops expiresAt/contract when the credential source did not set them.
+  'const D=J({v:1,eph:b6(await S.exportKey("spki",E.publicKey)),nonce:b6(N),ct:b6(await S.encrypt({name:"AES-GCM",iv:N},A,T.encode(J({authToken:t,username:u,expiresAt:x,contract:c}))))});',
   // No content-type header: keeps the PUT a CORS "simple request" (no preflight).
   'try{const r=await fetch(R+"/m/"+M,{method:"PUT",body:D});',
   'if(!r.ok&&r.status!=409)throw 0;',

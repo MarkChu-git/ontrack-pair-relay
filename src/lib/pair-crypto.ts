@@ -11,6 +11,15 @@ export interface PairCredentialPayload {
   authToken: string;
   username: string;
   expiresAt?: string;
+  /**
+   * Which contract the captured credential belongs to. 'access-token' is
+   * already a live API token and the CLI must use it as-is; 'legacy-auth' is a
+   * pending one-time login token the CLI still has to exchange through
+   * `POST /auth`. Offering the former there is answered with 419, so getting
+   * this wrong costs the whole login. Mirrors CredentialContract in ontrack-cli
+   * src/lib/types.ts; omit it and the CLI asks the server instead.
+   */
+  contract?: 'access-token' | 'legacy-auth';
 }
 
 export interface RelayEnvelope {

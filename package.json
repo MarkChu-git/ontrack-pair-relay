@@ -7,6 +7,8 @@
     "build": "vite build",
     "deploy": "vite build && wrangler deploy",
     "smoke": "node scripts/smoke.mjs",
+    "check:bookmarklet": "bun scripts/check-bookmarklet.ts",
+    "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
