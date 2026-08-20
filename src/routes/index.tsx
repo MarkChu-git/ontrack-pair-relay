@@ -53,6 +53,7 @@ function PairingPage() {
   );
   const pairSessionRef = useRef<PairSession | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bookmarkletAnchorRef = useRef<HTMLAnchorElement>(null);
 
   const t = (key: string, arg?: string | number) => translate(lang, key, arg);
 
@@ -61,6 +62,14 @@ function PairingPage() {
     document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
     document.title = translate(lang, 'title');
   }, [lang]);
+
+  // React sanitizes javascript: URLs passed through the href prop (it swaps
+  // in a throwing stub), which would silently kill the draggable bookmarklet.
+  // Set the attribute straight on the DOM node to bypass React's sanitizer;
+  // React never re-touches it because its own href prop stays "#".
+  useEffect(() => {
+    bookmarkletAnchorRef.current?.setAttribute('href', bookmarkletHref);
+  }, [bookmarkletHref]);
 
   function rebuildBookmarklet(langNow: Lang) {
     const session = pairSessionRef.current;
@@ -378,7 +387,8 @@ function PairingPage() {
               <a
                 id="bookmarklet"
                 className="btn bookmarklet"
-                href={bookmarkletHref}
+                ref={bookmarkletAnchorRef}
+                href="#"
                 onClick={onBookmarkletClick}
               >
                 {t('bookmarkletLabel')}
