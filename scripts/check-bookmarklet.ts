@@ -9,6 +9,10 @@
  * — an access token replayed through `POST /auth` is answered with 419 — so
  * every source is checked for the contract it reports.
  *
+ * The bookmarklet is a `javascript:` URL, so exercising it means evaluating it:
+ * the source comes from buildBookmarklet in this repository and every token here
+ * is a fixture, so no real credential and no outside input reaches the eval.
+ *
  * Usage: bun scripts/check-bookmarklet.ts
  * Exit code is 0 when every check passes, 1 otherwise.
  */
@@ -230,7 +234,7 @@ const MINTED = {
 
 await check('a minted access token is delivered with its contract and expiry', async () => {
   const payload = await deliveredPayload(keys, { mint: MINTED });
-  expect(payload.authToken === 'minted-token', `token was ${payload.authToken}`);
+  expect(payload.authToken === 'minted-token', 'the minted token must be delivered');
   expect(payload.username === 'student1', `username was ${payload.username}`);
   expect(payload.contract === 'access-token', `contract was ${payload.contract}`);
   expect(
@@ -244,7 +248,7 @@ await check('minting wins over the single-use landing-URL token', async () => {
     mint: MINTED,
     search: '?authToken=one-time-token&username=someone-else',
   });
-  expect(payload.authToken === 'minted-token', `token was ${payload.authToken}`);
+  expect(payload.authToken === 'minted-token', 'minting must win over the landing URL');
   expect(payload.contract === 'access-token', `contract was ${payload.contract}`);
 });
 
@@ -252,7 +256,7 @@ await check('a landing-URL token is reported as the legacy exchange contract', a
   const payload = await deliveredPayload(keys, {
     search: '?authToken=one-time-token&username=student1',
   });
-  expect(payload.authToken === 'one-time-token', `token was ${payload.authToken}`);
+  expect(payload.authToken === 'one-time-token', 'the landing-URL token must be delivered');
   expect(payload.username === 'student1', `username was ${payload.username}`);
   expect(payload.contract === 'legacy-auth', `contract was ${payload.contract}`);
   expect(!('expiresAt' in payload), 'a landing-URL token carries no expiry');
@@ -266,7 +270,7 @@ await check('a legacy localStorage token is unwrapped and reported as live', asy
       doubtfire_user: JSON.stringify({ username: 'student1' }),
     },
   });
-  expect(payload.authToken === 'stored-token', `token was ${payload.authToken}`);
+  expect(payload.authToken === 'stored-token', 'the stored token must be delivered');
   expect(payload.username === 'student1', `username was ${payload.username}`);
   expect(payload.contract === 'access-token', `contract was ${payload.contract}`);
 });
@@ -304,7 +308,7 @@ await check('a blocked cross-origin PUT falls back to the pairing page', async (
   const fragment = new URLSearchParams(target.hash.slice(1));
   expect(
     `${target.origin}${target.pathname}` === PAGE,
-    `fallback must return to the pairing page, got ${target.href}`,
+    `fallback must return to the pairing page, got ${target.origin}${target.pathname}`,
   );
   expect(
     fragment.get('m') === (await deriveMailboxId(CODE)),
