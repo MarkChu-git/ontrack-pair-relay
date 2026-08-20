@@ -241,15 +241,45 @@ await check('a minted access token is delivered with its contract and expiry', a
     payload.expiresAt === '2026-08-21T00:00:00.000Z',
     `expiry was ${payload.expiresAt}`,
   );
+  expect(!('exchangeToken' in payload), 'there is no landing-URL token to forward');
 });
 
-await check('minting wins over the single-use landing-URL token', async () => {
+await check('minting wins, and a same-user landing token travels as the spare', async () => {
+  // Exchanging that spare is the only way the CLI earns a refresh cookie, so it
+  // must be forwarded even though minting already produced a usable token.
+  const payload = await deliveredPayload(keys, {
+    mint: MINTED,
+    search: '?authToken=one-time-token&username=student1',
+  });
+  expect(payload.authToken === 'minted-token', 'minting must win over the landing URL');
+  expect(payload.contract === 'access-token', `contract was ${payload.contract}`);
+  expect(
+    payload.exchangeToken === 'one-time-token',
+    'the landing-URL token must be forwarded for the exchange',
+  );
+});
+
+await check('a landing token naming another user is not forwarded', async () => {
+  // The CLI would exchange it under the minted user's name, which is not who
+  // that token belongs to.
   const payload = await deliveredPayload(keys, {
     mint: MINTED,
     search: '?authToken=one-time-token&username=someone-else',
   });
   expect(payload.authToken === 'minted-token', 'minting must win over the landing URL');
-  expect(payload.contract === 'access-token', `contract was ${payload.contract}`);
+  expect(!('exchangeToken' in payload), 'a spare for another user must be dropped');
+});
+
+await check('a landing token without a username is forwarded as the spare', async () => {
+  const payload = await deliveredPayload(keys, {
+    mint: MINTED,
+    search: '?authToken=one-time-token',
+  });
+  expect(payload.username === 'student1', `username was ${payload.username}`);
+  expect(
+    payload.exchangeToken === 'one-time-token',
+    'an unattributed spare belongs to the signed-in browser session',
+  );
 });
 
 await check('a landing-URL token is reported as the legacy exchange contract', async () => {
@@ -260,6 +290,10 @@ await check('a landing-URL token is reported as the legacy exchange contract', a
   expect(payload.username === 'student1', `username was ${payload.username}`);
   expect(payload.contract === 'legacy-auth', `contract was ${payload.contract}`);
   expect(!('expiresAt' in payload), 'a landing-URL token carries no expiry');
+  expect(
+    !('exchangeToken' in payload),
+    'the credential itself needs no duplicate spare',
+  );
 });
 
 await check('a legacy localStorage token is unwrapped and reported as live', async () => {
