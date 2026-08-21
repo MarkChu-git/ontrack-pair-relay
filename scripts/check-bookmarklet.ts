@@ -20,7 +20,6 @@ import { buildBookmarklet } from '../src/lib/bookmarklet';
 import { b64urlDecode, deriveMailboxId } from '../src/lib/pair-crypto';
 
 const RELAY = 'https://pair.example.test';
-const ONTRACK = 'https://ontrack.example.test';
 const PAGE = `${RELAY}/`;
 const CODE = 'abcdefghijklmnop';
 const MESSAGES = {
@@ -121,14 +120,6 @@ interface RunOptions {
   link?: string;
   /** Query string of the OnTrack page the bookmarklet runs on. */
   search?: string;
-  /**
-   * URL the document was loaded with, as the navigation timing entry reports
-   * it. The web app strips the sign-in query from the address bar, so this is
-   * where a landing-URL token survives; omit it for a browser that has no entry.
-   */
-  navigationUrl?: string;
-  /** Simulates a browser without the performance API at all. */
-  withoutPerformance?: boolean;
   /** Answer for POST /api/auth/access-token; omit to make the mint fail. */
   mint?: { status: number; body?: unknown };
   storage?: Record<string, string>;
@@ -181,13 +172,6 @@ async function runBookmarklet(options: RunOptions): Promise<RunResult> {
     throw new Error(`unexpected fetch to ${url}`);
   };
 
-  const performanceStub = {
-    getEntriesByType: (type: string) =>
-      type === 'navigation' && options.navigationUrl
-        ? [{ name: options.navigationUrl }]
-        : [],
-  };
-
   const body = source.slice('javascript:'.length);
   // The bookmarklet reads these as free identifiers, so parameters shadow them.
   const invoke = new Function(
@@ -196,7 +180,6 @@ async function runBookmarklet(options: RunOptions): Promise<RunResult> {
     'fetch',
     'localStorage',
     'location',
-    'performance',
     `return ${body}`,
   ) as (
     prompt: () => string | null,
@@ -204,7 +187,6 @@ async function runBookmarklet(options: RunOptions): Promise<RunResult> {
     fetch: typeof fetchStub,
     localStorage: { getItem(key: string): string | null },
     location: typeof locationStub,
-    performance: typeof performanceStub | undefined,
   ) => Promise<void>;
 
   await invoke(
@@ -215,7 +197,6 @@ async function runBookmarklet(options: RunOptions): Promise<RunResult> {
     fetchStub,
     { getItem: (key) => options.storage?.[key] ?? null },
     locationStub,
-    options.withoutPerformance ? undefined : performanceStub,
   );
   return result;
 }
@@ -260,90 +241,17 @@ await check('a minted access token is delivered with its contract and expiry', a
     payload.expiresAt === '2026-08-21T00:00:00.000Z',
     `expiry was ${payload.expiresAt}`,
   );
-  expect(!('exchangeToken' in payload), 'there is no landing-URL token to forward');
 });
 
-await check('minting wins, and a same-user landing token travels as the spare', async () => {
-  // Exchanging that spare is the only way the CLI earns a refresh cookie, so it
-  // must be forwarded even though minting already produced a usable token.
+await check('minting wins over a landing-URL token', async () => {
+  // The landing token lives 30 seconds and the web app spends it as the page
+  // loads, so a minted token is the only one worth delivering when both exist.
   const payload = await deliveredPayload(keys, {
     mint: MINTED,
     search: '?authToken=one-time-token&username=student1',
   });
   expect(payload.authToken === 'minted-token', 'minting must win over the landing URL');
   expect(payload.contract === 'access-token', `contract was ${payload.contract}`);
-  expect(
-    payload.exchangeToken === 'one-time-token',
-    'the landing-URL token must be forwarded for the exchange',
-  );
-});
-
-await check('a landing token stripped from the address bar is still forwarded', async () => {
-  // This is the ordinary case, not an edge one: the web app rewrites the URL on
-  // sign-in, so by the time a human clicks the bookmark the query is gone. The
-  // whole point of the pairing relay is not needing to beat that rewrite.
-  const payload = await deliveredPayload(keys, {
-    mint: MINTED,
-    search: '',
-    navigationUrl: `${ONTRACK}/sign_in?authToken=one-time-token&username=student1`,
-  });
-  expect(payload.authToken === 'minted-token', 'minting must still win');
-  expect(
-    payload.exchangeToken === 'one-time-token',
-    'the navigation entry must supply the spare once the address bar is stripped',
-  );
-});
-
-await check('a stripped landing token is the credential when minting fails', async () => {
-  const payload = await deliveredPayload(keys, {
-    search: '',
-    navigationUrl: `${ONTRACK}/sign_in?authToken=one-time-token&username=student1`,
-  });
-  expect(payload.authToken === 'one-time-token', 'the recovered token must be delivered');
-  expect(payload.username === 'student1', `username was ${payload.username}`);
-  expect(payload.contract === 'legacy-auth', `contract was ${payload.contract}`);
-});
-
-await check('a spare is paired with the username from its own URL', async () => {
-  // Reading the token from one URL and the username from another would let a
-  // token for someone else pass the same-user guard.
-  const payload = await deliveredPayload(keys, {
-    mint: MINTED,
-    search: '?username=student1',
-    navigationUrl: `${ONTRACK}/sign_in?authToken=one-time-token&username=someone-else`,
-  });
-  expect(!('exchangeToken' in payload), 'a spare for another user must be dropped');
-});
-
-await check('a browser without the performance API still delivers', async () => {
-  const payload = await deliveredPayload(keys, {
-    mint: MINTED,
-    withoutPerformance: true,
-  });
-  expect(payload.authToken === 'minted-token', 'the minted token must be delivered');
-});
-
-await check('a landing token naming another user is not forwarded', async () => {
-  // The CLI would exchange it under the minted user's name, which is not who
-  // that token belongs to.
-  const payload = await deliveredPayload(keys, {
-    mint: MINTED,
-    search: '?authToken=one-time-token&username=someone-else',
-  });
-  expect(payload.authToken === 'minted-token', 'minting must win over the landing URL');
-  expect(!('exchangeToken' in payload), 'a spare for another user must be dropped');
-});
-
-await check('a landing token without a username is forwarded as the spare', async () => {
-  const payload = await deliveredPayload(keys, {
-    mint: MINTED,
-    search: '?authToken=one-time-token',
-  });
-  expect(payload.username === 'student1', `username was ${payload.username}`);
-  expect(
-    payload.exchangeToken === 'one-time-token',
-    'an unattributed spare belongs to the signed-in browser session',
-  );
 });
 
 await check('a landing-URL token is reported as the legacy exchange contract', async () => {
@@ -354,10 +262,6 @@ await check('a landing-URL token is reported as the legacy exchange contract', a
   expect(payload.username === 'student1', `username was ${payload.username}`);
   expect(payload.contract === 'legacy-auth', `contract was ${payload.contract}`);
   expect(!('expiresAt' in payload), 'a landing-URL token carries no expiry');
-  expect(
-    !('exchangeToken' in payload),
-    'the credential itself needs no duplicate spare',
-  );
 });
 
 await check('a legacy localStorage token is unwrapped and reported as live', async () => {

@@ -32,16 +32,14 @@
      *     //       Response: {user: {username...}, auth_token, auth_token_expiry}.
      *     //       Tried first: unlike the landing-URL token below it is fresh,
      *     //       carries an expiry, and is not single-use.
-     *     //    b. sign_in landing URL query (?authToken=...&username=...) — the
-     *     //       web app strips it from the address bar on sign-in, so it is
-     *     //       also read from the navigation timing entry, which keeps the
-     *     //       URL the document was loaded with. Read even when (a) worked:
-     *     //       exchanging one of these is the only way the CLI gets a
-     *     //       refresh cookie, so it travels as the spare `exchangeToken`.
+     *     //    b. sign_in landing URL query (?authToken=...&username=...) — a
+     *     //       fallback only. The token lives 30 seconds and the web app
+     *     //       spends it as the page loads, so this is for a doubtfire <=10
+     *     //       page that is still sitting on one.
      *     //    c. legacy localStorage (doubtfire <=10):
      *     //       doubtfire_credentials_token / doubtfire_user, which is itself
      *     //       an API token.
- *     let authToken = "", username = "", contract, expiresAt, exchangeToken;
+ *     let authToken = "", username = "", contract, expiresAt;
  *     const minted = await fetch("/api/auth/access-token", { method: "POST" });
  *     if (minted.ok) {
  *       const j = await minted.json();
@@ -53,24 +51,13 @@
  *       }
  *     }
  *     {
- *       const queries = [new URLSearchParams(location.search)];
- *       const nav = performance.getEntriesByType("navigation")[0];
- *       if (nav && nav.name) queries.push(new URL(nav.name).searchParams);
- *       // The token and the username it names must come from the same URL.
- *       let landingToken = null, landingUser = null;
- *       for (const q of queries) {
- *         const t = q.get("authToken");
- *         if (t) { landingToken = t; landingUser = q.get("username"); break; }
+ *       const q = new URLSearchParams(location.search);
+ *       const landingToken = q.get("authToken"), landingUser = q.get("username");
+ *       if (!authToken && landingToken) {
+ *         authToken = landingToken;
+ *         contract = "legacy-auth";
  *       }
- *       if (!authToken) {
- *         if (landingToken) { authToken = landingToken; contract = "legacy-auth"; }
- *       } else if (landingToken && (!landingUser || landingUser === username)) {
- *         exchangeToken = landingToken;
- *       }
- *       if (!username) for (const q of queries) {
- *         const u = q.get("username");
- *         if (u) { username = u; break; }
- *       }
+ *       if (!username && landingUser) username = landingUser;
  *     }
  *     if (!authToken || !username) {
  *       let raw = localStorage.getItem("doubtfire_credentials_token"); // may be a JSON string
@@ -93,9 +80,9 @@
  *     //      -> HKDF-SHA256(salt = 32 zero bytes, info = "ontrack-pair-v1")
  *     //      -> AES-256-GCM, 12-byte random nonce
  *     //    envelope {"v":1,"eph":b64url(spki),"nonce":b64url,"ct":b64url}
- *     //    JSON.stringify drops the three optional fields when unset.
+ *     //    JSON.stringify drops the two optional fields when unset.
  *     const envelope = await eciesEncrypt(K, {
- *       authToken, username, expiresAt, contract, exchangeToken,
+ *       authToken, username, expiresAt, contract,
  *     });
  *
  *     // 5. Deliver: PUT R + "/m/" + M. If the OnTrack page CSP connect-src
@@ -116,9 +103,8 @@ const BOOKMARKLET_LINES = [
   'const M=[...new Uint8Array(await S.digest("SHA-256",T.encode(code)))].map(b=>b.toString(16).padStart(2,"0")).join("");',
   // t/u are the credential, c its contract, x its expiry when the source knows
   // one. c decides whether the CLI may use the token directly or has to
-  // exchange it, so it is set wherever t is. y is a spare one-time login token
-  // the CLI can exchange for a renewable session.
-  'let t,u,c,x,y;',
+  // exchange it, so it is set wherever t is.
+  'let t,u,c,x;',
   // doubtfire >=11 keeps the token in memory only; mint a fresh one via the
   // HttpOnly refresh cookie (the same-origin fetch carries it automatically).
   // Tried first: the landing-URL token below is single-use and the web app has
@@ -128,23 +114,13 @@ const BOOKMARKLET_LINES = [
   'if(r.ok){const j=await r.json();',
   'if(j&&j.auth_token){t=j.auth_token;c="access-token";x=j.auth_token_expiry;const o=j.user||{};u=o.username||o.user_name||o.login||o.email||o.student_email}}',
   '}catch(e){}',
-  // sign_in?authToken=... landing URL: a pending one-time login token. Read it
-  // even when minting already worked, because only exchanging one of these
-  // earns the refresh cookie the CLI needs to renew silently. It is passed as a
-  // spare (y) rather than the credential, since it may already be spent;
-  // a spare naming a different user is dropped, as the CLI would exchange it
-  // under the minted user's name. The web app strips the query from the address
-  // bar on sign-in, which would leave nothing to read by the time a human
-  // clicks the bookmark, so the navigation timing entry is read too: it keeps
-  // the URL the document was loaded with, and history.replaceState cannot
-  // touch it.
-  'try{const Q=[new URLSearchParams(location.search)];',
-  'try{const N=performance.getEntriesByType("navigation")[0];if(N&&N.name)Q.push(new URL(N.name).searchParams)}catch(e){}',
-  // a and n must come from one URL, or the spare could be paired with a
-  // username from elsewhere and defeat the same-user guard below.
-  'let a=null,n=null;for(const q of Q){const z=q.get("authToken");if(z){a=z;n=q.get("username");break}}',
-  'if(!t){if(a){t=a;c="legacy-auth"}}else if(a&&(!n||n===u))y=a;',
-  'if(!u)for(const q of Q){const o=q.get("username");if(o){u=o;break}}}catch(e){}',
+  // sign_in?authToken=... landing URL: a pending one-time login token, and only
+  // ever a fallback. It lives 30 seconds and the web app spends it as the page
+  // loads, so it is normally gone or dead by the time this runs; it is read
+  // because a doubtfire <=10 page may still be sitting on one.
+  'try{const q=new URLSearchParams(location.search),a=q.get("authToken"),n=q.get("username");',
+  'if(!t&&a){t=a;c="legacy-auth"}',
+  'if(!u&&n)u=n}catch(e){}',
   // Legacy localStorage layout (doubtfire <=10), itself already an API token.
   'if(!t||!u)try{',
   'let v=L.getItem("doubtfire_credentials_token");',
@@ -158,8 +134,8 @@ const BOOKMARKLET_LINES = [
   'const E=await S.generateKey(G,!1,["deriveBits"]);',
   'const A=await S.deriveKey({name:"HKDF",hash:"SHA-256",salt:new Uint8Array(32),info:T.encode("ontrack-pair-v1")},await S.importKey("raw",await S.deriveBits({name:"ECDH",public:C},E.privateKey,256),"HKDF",!1,["deriveKey"]),{name:"AES-GCM",length:256},!1,["encrypt"]);',
   'const N=crypto.getRandomValues(new Uint8Array(12));',
-  // J drops expiresAt/contract/exchangeToken when no source set them.
-  'const D=J({v:1,eph:b6(await S.exportKey("spki",E.publicKey)),nonce:b6(N),ct:b6(await S.encrypt({name:"AES-GCM",iv:N},A,T.encode(J({authToken:t,username:u,expiresAt:x,contract:c,exchangeToken:y}))))});',
+  // J drops expiresAt/contract when no source set them.
+  'const D=J({v:1,eph:b6(await S.exportKey("spki",E.publicKey)),nonce:b6(N),ct:b6(await S.encrypt({name:"AES-GCM",iv:N},A,T.encode(J({authToken:t,username:u,expiresAt:x,contract:c}))))});',
   // No content-type header: keeps the PUT a CORS "simple request" (no preflight).
   'try{const r=await fetch(R+"/m/"+M,{method:"PUT",body:D});',
   'if(!r.ok&&r.status!=409)throw 0;',

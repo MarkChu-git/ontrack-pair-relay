@@ -41,19 +41,17 @@ byte-compatible with it.
   12-byte nonce, envelope `{"v":1,"eph","nonce","ct"}` base64url without
   padding; mailboxId = SHA-256 hex of the pairing code.
 - `src/lib/bookmarklet.ts` — bookmarklet source template and builder. It
-  delivers `{authToken, username, expiresAt?, contract?, exchangeToken?}` and
-  tries credential sources in this order: `POST /api/auth/access-token`
-  (doubtfire ≥11 keeps the token in memory only, and the same-origin fetch
-  carries the HttpOnly refresh cookie that mints a fresh one), then the
-  `sign_in?authToken=` landing URL, then the legacy `localStorage` keys.
-  `contract` tells the CLI whether the token is already usable (`access-token`)
-  or is a pending one-time login token that still needs the `POST /auth`
-  exchange (`legacy-auth`) — sending the former to that endpoint is answered
-  with 419, so mislabelling it breaks the login. The landing URL is read even
-  when minting worked: a still-pending token found there travels as
-  `exchangeToken`, because exchanging one is the only way the CLI obtains a
-  refresh cookie and can keep the session alive past its access token. It is
-  dropped when the landing URL names a different user than the credential.
+  delivers `{authToken, username, expiresAt?, contract?}` and tries credential
+  sources in this order: `POST /api/auth/access-token` (doubtfire ≥11 keeps the
+  token in memory only, and the same-origin fetch carries the HttpOnly refresh
+  cookie that mints a fresh one), then the `sign_in?authToken=` landing URL,
+  then the legacy `localStorage` keys. `contract` tells the CLI whether the
+  token is already usable (`access-token`) or is a pending one-time login token
+  that still needs the `POST /auth` exchange (`legacy-auth`) — sending the
+  former to that endpoint is answered with 419, so mislabelling it breaks the
+  login. The landing URL is a fallback only: that token expires 30 seconds after
+  OnTrack issues it and the web app spends it as the page loads, which is also
+  why a paired session cannot obtain a refresh cookie and cannot renew itself.
 - `scripts/smoke.mjs` — smoke test against a running deployment.
 - `scripts/check-bookmarklet.ts` — runs the real bookmarklet against stubbed
   browser globals and decrypts what it delivered, so a wrong credential source
@@ -75,9 +73,8 @@ The smoke test covers: PUT → GET → GET 404 (one-shot delivery), duplicate PU
 409 without overwrite, invalid id 400, oversized body 413.
 
 The bookmarklet check covers each credential source and the contract it reports,
-minting winning over the single-use landing-URL token while still forwarding it
-as `exchangeToken` (and dropping one that names another user), the no-credential
-and bad-link alerts, and the `#d=` CSP fallback. Run it after any edit to
+minting winning over the single-use landing-URL token, the no-credential and
+bad-link alerts, and the `#d=` CSP fallback. Run it after any edit to
 `src/lib/bookmarklet.ts`: that code only ever executes on OnTrack's origin, so
 nothing else catches a mistake before a user's login fails.
 

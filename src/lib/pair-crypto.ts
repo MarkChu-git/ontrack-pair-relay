@@ -20,13 +20,6 @@ export interface PairCredentialPayload {
    * src/lib/types.ts; omit it and the CLI asks the server instead.
    */
   contract?: 'access-token' | 'legacy-auth';
-  /**
-   * A pending one-time `sign_in` login token for the same user, when the landing
-   * URL still carried one. The CLI prefers exchanging it, because only the
-   * exchange returns the refresh cookie that lets a paired session renew
-   * silently instead of dying with its access token.
-   */
-  exchangeToken?: string;
 }
 
 export interface RelayEnvelope {
