@@ -82,7 +82,7 @@
  *     //      -> HKDF-SHA256(salt = 32 zero bytes, info = "ontrack-pair-v1")
  *     //      -> AES-256-GCM, 12-byte random nonce
  *     //    envelope {"v":1,"eph":b64url(spki),"nonce":b64url,"ct":b64url}
- *     //    JSON.stringify drops the two optional fields when unset.
+ *     //    JSON.stringify drops the three optional fields when unset.
  *     const envelope = await eciesEncrypt(K, {
  *       authToken, username, expiresAt, contract, exchangeToken,
  *     });
